@@ -9,11 +9,20 @@ type Tool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
-	Endpoint    string         `json:"endpoint"` // MCP Server 地址
-	Auth        string         `json:"auth"`     // 鉴权方式
+	Endpoint    string         `json:"endpoint"`  // MCP Server 地址
+	Transport   string         `json:"transport"` // stdio | streamable-http
+	Auth        string         `json:"auth"`      // 鉴权方式
 	RateLimit   RateLimit      `json:"rateLimit,omitempty"`
 	Redact      []string       `json:"redact,omitempty"` // 敏感字段脱敏
 	Audit       bool           `json:"audit"`
+}
+
+// transportName 返回规范化的传输名
+func (t *Tool) transportName() string {
+	if t.Transport == "" {
+		return "stdio"
+	}
+	return t.Transport
 }
 
 type RateLimit struct {

@@ -21,6 +21,7 @@
 - **A2A Gateway**（`internal/a2a/gateway.go`）：AgentCard 注册/发现、任务委派、消息路由、跨租户默认禁止（D-4）+ 联邦信任
 - **NATS 事件总线**（`internal/eventbus/nats.go`）：NATS JetStream 实现，租户隔离 subject（R-3）、事件发布/订阅/投递
 - **Agent↔Registry/Gateway 控制器联动**（`internal/registration`）：Agent Running 时自动读取 `ToolBinding`/`MCPEndpoint` CRD 注入工具授权（R-4），并注册 AgentCard 到 A2A Gateway
+- **MCP 工具调用端到端**（`internal/mcp/{client,invoker,transport_*}.go`）：MCP Client 转发器（stdio + streamable HTTP 传输），MCP Proxy 经 `MCPInvoker` 转发到真实 Tool Server；已用真实 MCP Server 端到端验证完整调用链（鉴权→数据过滤→转发→脱敏→审计）
 
 核心能力：
 
@@ -75,13 +76,14 @@ agent-runtime-operator/
 ├── api/v1/               # CRD Go 类型定义
 ├── cmd/operator/         # Operator 主入口
 ├── cmd/relay/            # Event Relay Sidecar 入口（M1-b）
+├── cmd/mcp-server/       # MCP Server 示例实现（Tool Server 参考）
 ├── internal/
 │   ├── controllers/      # Reconciler（Tenant/Agent/Sandbox）
 │   ├── sandbox/          # 沙箱 Pod 构建与生命周期
 │   ├── relay/            # Event Relay 本地 socket 服务（P0-2）
 │   ├── orchestrator/     # 编排引擎接口（DSL → DAG → Temporal）
 │   ├── eventbus/         # 事件总线（NATS JetStream 实现）
-│   ├── mcp/              # MCP Registry / Proxy
+│   ├── mcp/              # MCP Registry / Proxy / Client（stdio+HTTP）
 │   ├── a2a/              # A2A Gateway
 │   └── registration/     # Agent↔Registry/Gateway 控制器联动
 ├── config/
@@ -101,7 +103,7 @@ agent-runtime-operator/
 | 阶段 | 里程碑 | 交付物 |
 |------|--------|--------|
 | M1 | 基础底座 | ✅ M1-a 普通 Pod；✅ M1-b gVisor RuntimeClass + Event Relay Sidecar（本地 socket 通路，S2 前置）；✅ 真实集群端到端验证 |
-| M2 | 协议层 | ✅ MCP Registry/Proxy、A2A Gateway、NATS 事件总线、Agent↔Registry/Gateway 控制器联动；待：工具调用端到端、MCP Proxy 转发到真实 Tool Server |
+| M2 | 协议层 | ✅ MCP Registry/Proxy、A2A Gateway、NATS 事件总线、Agent↔Registry/Gateway 控制器联动、MCP 工具调用端到端（真实 Tool Server 验证） |
 | M3 | 编排引擎 | DSL 解析、DAG 执行、事件驱动、重试/补偿、Human-in-the-loop |
 | M4 | 强隔离 | Firecracker 接入、快照 Suspend/Resume、租户安全加固、审计 |
 | M5 | 生产化 | 高可用、可观测、多集群联邦、SDK 与插件市场 |

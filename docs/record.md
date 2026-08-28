@@ -117,8 +117,21 @@ Agent↔Registry/Gateway 控制器联动 ✅
 - AgentReconciler 集成：Sandbox Running 时触发 syncRegistration；依赖注入（Syncer）经 main.go
 - 单元测试：ToolBinding 授权注入、AgentRefs 过滤、AgentCard 注册（仅 A2A 启用时）✅
 
-待办（M2 收尾 / M3）
-- 工具调用端到端（MCP Proxy 转发到真实 Tool Server）
+MCP 工具调用端到端 ✅
+
+已实现
+- MCP Client（internal/mcp/client.go）：JSON-RPC 2.0 + MCP 协议（initialize / tools/call），解析结构化结果
+- stdio 传输（transport_stdio.go）：启动 MCP Server 子进程，stdin/stdout 通信
+- streamable HTTP 传输（transport_http.go）：远程 MCP Server（含 SSE 响应解析）
+- MCPInvoker（invoker.go）：按 Transport 选择传输并缓存客户端，作为 Proxy 底层调用器
+- MCP Server 示例（cmd/mcp-server）：stdio 传输，暴露 echo / get_weather 工具
+
+端到端验证（真实 MCP Server）
+- TestE2E_ProxyToMCPServer：Proxy → MCPInvoker → 真实 MCP Server（stdio）
+  验证：注册→鉴权→数据过滤注入→MCP 协议转发→脱敏→审计 完整链路 ✅
+- TestE2E_MCPServer_Echo：stdio 传输握手 + tools/call ✅
+
+待办（M3）
 - 编排引擎（DSL 解析 / DAG / Temporal 委托）— M3
 
 

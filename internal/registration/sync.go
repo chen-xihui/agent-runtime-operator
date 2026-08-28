@@ -67,6 +67,7 @@ func (s *Syncer) SyncAgentTools(ctx context.Context, tenantID, agentID string, b
 				_ = s.mcp.Register(ctx, &mcp.Tool{
 					Name:        grant.Name,
 					Endpoint:    ep.Spec.Address,
+					Transport:   ep.Spec.Transport,
 					Auth:        ep.Spec.Auth.Type,
 					RateLimit:   mcp.RateLimit{RPS: grant.RateLimit.RPS, Burst: grant.RateLimit.Burst, Monthly: grant.RateLimit.Monthly},
 					Redact:      grant.Redact,
