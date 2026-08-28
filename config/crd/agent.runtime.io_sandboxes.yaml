@@ -51,6 +51,8 @@ spec:
                     type: string
                 enableRelay:
                   type: boolean
+                runAsNonRoot:
+                  type: boolean
             status:
               description: SandboxStatus 沙箱实际状态
               type: object

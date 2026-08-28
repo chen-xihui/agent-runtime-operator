@@ -18,3 +18,16 @@ var (
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+// 注册本组所有 API 类型到 Scheme（缺失会导致 controller 运行时 "no kind is registered"）
+func init() {
+	SchemeBuilder.Register(
+		&Agent{}, &AgentList{},
+		&Sandbox{}, &SandboxList{},
+		&Tenant{}, &TenantList{},
+		&Workflow{}, &WorkflowList{},
+		&WorkflowRun{}, &WorkflowRunList{},
+		&ToolBinding{}, &ToolBindingList{},
+		&MCPEndpoint{}, &MCPEndpointList{},
+	)
+}

@@ -54,32 +54,42 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 
 	case agentv1.PhaseProvisioning:
-		ready, err := r.Sandbox.EnsurePod(ctx, sb, tenantNS)
+		state, err := r.Sandbox.EnsurePod(ctx, sb, tenantNS)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		if !ready {
+		if !state.PodReady {
 			logger.Info("sandbox pod not ready, waiting", "sandbox", sb.Name)
+			r.setRelayReady(sb, false)
 			return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 		}
-		// Pod Ready。若启用 Relay，需等待 relayReady（S2）后才能进入 Running
+		// Pod 已 Ready。若启用 Relay，需等待 relayReady=true 才能进入 Running（S2）
 		if sb.Spec.EnableRelay {
-			r.setPhase(sb, agentv1.PhaseProvisioning, "waiting for event relay ready")
-			// 简化：Pod Ready 即视为 Relay 就绪占位，真实 Relay 健康探测见 M1-b
-			r.setRelayReady(sb, true)
+			r.setRelayReady(sb, state.RelayReady)
+			if !state.RelayReady {
+				r.setPhase(sb, agentv1.PhaseProvisioning, "waiting for event relay ready")
+				logger.Info("event relay not ready, waiting", "sandbox", sb.Name)
+				return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+			}
 		}
 		r.setPhase(sb, agentv1.PhaseRunning, "")
 		return ctrl.Result{}, nil
 
 	case agentv1.PhaseRunning:
 		// 确保 Pod 仍在运行；若被删除则回退 Provisioning
-		pod := &corev1.Pod{}
-		if err := r.Get(ctx, client.ObjectKey{Name: sb.Name, Namespace: tenantNS}, pod); err != nil {
+		state, err := r.Sandbox.EnsurePod(ctx, sb, tenantNS)
+		if err != nil {
 			if apierrors.IsNotFound(err) {
 				r.setPhase(sb, agentv1.PhaseProvisioning, "pod lost, re-provisioning")
 				return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 			}
 			return ctrl.Result{}, err
+		}
+		// Relay 掉线时回退 Provisioning（保持 S2 前置条件）
+		if sb.Spec.EnableRelay && !state.RelayReady {
+			r.setRelayReady(sb, false)
+			r.setPhase(sb, agentv1.PhaseProvisioning, "relay lost, re-provisioning")
+			return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 		}
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 

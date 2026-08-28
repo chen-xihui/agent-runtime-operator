@@ -451,6 +451,11 @@ func (in *SandboxSpec) DeepCopyInto(out *SandboxSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.RunAsNonRoot != nil {
+		in, out := &in.RunAsNonRoot, &out.RunAsNonRoot
+		*out = new(bool)
+		**out = **in
+	}
 }
 
 // DeepCopy returns a deep copy of the receiver.

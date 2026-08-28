@@ -76,6 +76,8 @@ func buildResourceQuota(tenant *agentv1.Tenant) *corev1.ResourceQuota {
 	rq := &corev1.ResourceQuota{}
 	rq.Name = "tenant-quota"
 	rq.Namespace = tenant.Name
+	// 必须初始化 Hard map，否则赋值会 panic
+	rq.Spec.Hard = make(corev1.ResourceList)
 	if q.MaxCPU != "" {
 		rq.Spec.Hard["limits.cpu"] = parseQuantity(q.MaxCPU)
 	}

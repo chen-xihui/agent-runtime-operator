@@ -36,26 +36,34 @@ func NewController(c client.Client, s *runtime.Scheme, cfg *Config) *Controller 
 	return &Controller{client: c, scheme: s, cfg: cfg}
 }
 
-// EnsurePod 确保沙箱对应的 Pod 存在，返回 Pod 是否就绪
-func (c *Controller) EnsurePod(ctx context.Context, sb *agentv1.Sandbox, tenantNS string) (bool, error) {
+// PodState 表示沙箱 Pod 的就绪状态
+type PodState struct {
+	// PodReady Pod 整体已 Ready
+	PodReady bool
+	// RelayReady Event Relay Sidecar 容器已就绪（仅 EnableRelay 时有效）
+	RelayReady bool
+}
+
+// EnsurePod 确保沙箱对应的 Pod 存在，返回 Pod 就绪状态
+func (c *Controller) EnsurePod(ctx context.Context, sb *agentv1.Sandbox, tenantNS string) (*PodState, error) {
 	pod := &corev1.Pod{}
 	err := c.client.Get(ctx, types.NamespacedName{Name: sb.Name, Namespace: tenantNS}, pod)
 	if err == nil {
-		return c.podReady(pod), nil
+		return c.podState(pod, sb.Spec.EnableRelay), nil
 	}
 	if client.IgnoreNotFound(err) != nil {
-		return false, err
+		return nil, err
 	}
 
 	// Pod 不存在，创建
 	pod = buildSandboxPod(sb, tenantNS, c.cfg)
 	if err := ctrl.SetControllerReference(sb, pod, c.scheme); err != nil {
-		return false, fmt.Errorf("set owner ref: %w", err)
+		return nil, fmt.Errorf("set owner ref: %w", err)
 	}
 	if err := c.client.Create(ctx, pod); err != nil {
-		return false, err
+		return nil, err
 	}
-	return false, nil
+	return &PodState{}, nil
 }
 
 // DestroyPod 删除沙箱对应的 Pod
@@ -68,11 +76,26 @@ func (c *Controller) DestroyPod(ctx context.Context, sb *agentv1.Sandbox, tenant
 	return c.client.Delete(ctx, pod)
 }
 
-// podReady 判断 Pod 是否已 Ready
-func (c *Controller) podReady(pod *corev1.Pod) bool {
+// podState 计算 Pod 及 Event Relay Sidecar 容器的就绪状态
+func (c *Controller) podState(pod *corev1.Pod, enableRelay bool) *PodState {
+	state := &PodState{}
 	for _, cond := range pod.Status.Conditions {
 		if cond.Type == corev1.PodReady {
-			return cond.Status == corev1.ConditionTrue
+			state.PodReady = cond.Status == corev1.ConditionTrue
+		}
+	}
+	// 检查 Event Relay 容器就绪（S2：relayReady 作为 Provisioning→Running 前置条件）
+	if enableRelay {
+		state.RelayReady = containerReady(pod, relayContainerName)
+	}
+	return state
+}
+
+// containerReady 判断指定容器是否处于 Ready 状态
+func containerReady(pod *corev1.Pod, name string) bool {
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.Name == name {
+			return cs.Ready
 		}
 	}
 	return false

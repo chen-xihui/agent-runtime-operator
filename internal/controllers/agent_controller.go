@@ -60,6 +60,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			Image:        agent.Spec.Image,
 			Entrypoint:   agent.Spec.Entrypoint,
 			EnableRelay:  agent.Spec.A2A.Enabled || agent.Spec.MCP.AllowedTools != nil,
+			RunAsNonRoot: boolPtr(agent.Spec.Security.RunAsNonRoot),
 		},
 	}
 	if err := ctrl.SetControllerReference(agent, sb, r.Scheme); err != nil {
@@ -105,3 +106,5 @@ func (r *AgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Pod{}).
 		Complete(r)
 }
+
+func boolPtr(b bool) *bool { return &b }

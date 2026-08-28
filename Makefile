@@ -16,9 +16,15 @@ LDFLAGS := -X main.version=$(VERSION)
 all: build
 
 .PHONY: build
-build: ## 编译所有二进制
+build: ## 编译所有二进制（operator + event-relay）
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/operator ./cmd/operator
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/event-relay ./cmd/relay
+
+.PHONY: build-relay
+build-relay: ## 仅编译 Event Relay Sidecar
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/event-relay ./cmd/relay
 
 .PHONY: run
 run: ## 本地运行 Operator（连当前 kubeconfig 集群）

@@ -121,8 +121,10 @@ type SandboxSpec struct {
 	Resources    corev1.ResourceRequirements `json:"resources"`
 	Image        string        `json:"image"`
 	Entrypoint   []string      `json:"entrypoint,omitempty"`
-	// RelayReady 目标状态，Event Relay Sidecar 注入
+	// EnableRelay Event Relay Sidecar 注入
 	EnableRelay  bool          `json:"enableRelay,omitempty"`
+	// RunAsNonRoot 是否以非 root 运行（来自 Agent.spec.security.runAsNonRoot，默认 true）
+	RunAsNonRoot *bool         `json:"runAsNonRoot,omitempty"`
 }
 
 // SandboxStatus 沙箱实际状态

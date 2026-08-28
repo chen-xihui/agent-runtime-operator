@@ -27,3 +27,70 @@ go build -o bin/operator.exe ./cmd/operator ✅
 下一步建议
 M1-a 验证需真实 Kubernetes 集群（kubectl apply -k config/default 后创建 tenant_a + agent_gvisor）
 后续可进入 M1-b（Event Relay Sidecar 真实就绪探测）与 M2（MCP/A2A 协议层实现）
+
+
+M1-b（Event Relay Sidecar 真实就绪探测）已全部完成并通过验证。
+
+本次完成的改进
+1. Event Relay Sidecar 真实实现（cmd/relay + internal/relay）
+
+本地 unix:// socket 服务，作为沙箱唯一安全出口（P0-2）
+支持 DeliverToAgent（投递事件给 Agent）与 ReceiveFromAgent（接收 Agent 上报事件）
+Agent 仅通过本地 socket 通信，不持有外部凭证
+2. Relay 真实就绪探测（internal/sandbox/controller.go）
+
+EnsurePod 现在返回 PodState{PodReady, RelayReady}，通过检查 Pod 内 event-relay 容器的 Ready 状态判断 relay 就绪（不再用"Pod Ready 即视为 relay 就绪"的占位）
+Relay 容器就绪探测：test -S /var/run/agent.sock（socket 文件存在即就绪）
+3. 状态机正确性（S2）（internal/controllers/sandbox_controller.go）
+
+Provisioning → Running 现在以 relayReady=true 为前置条件
+Running 阶段若 relay 掉线则回退 Provisioning 重新编排
+4. Pod 构建完善（internal/sandbox/pod.go）
+
+Agent 与 Relay 容器共享 agent-socket 卷（本地 socket 通路）
+使用常量统一容器名/socket 路径
+5. 单元测试（relay_test.go + pod_test.go）
+
+验证 relay socket 事件投递/接收通路
+验证普通 Pod（无 relay）与带 relay 的 Pod 构建正确性
+验证结果
+go build ./... ✅
+go vet ./... ✅
+go test ./... ✅（relay 0.993s、sandbox 0.500s 通过）
+下一步建议
+M1-b 端到端验证需真实集群：构建 relay 镜像并推送到 registry，再创建启用 A2A/MCP 的 Agent 观察 relay 就绪与状态机迁移
+之后可进入 M2 协议层：实现 MCP Registry/Proxy 与 A2A Gateway（当前已有接口契约，下一步是 NATS 接入 + 具体实现）
+
+
+M1-b 端到端验证（虚拟机 192.168.0.31 K8S 集群）✅
+
+集群修复（老集群 v1.23 证书全过期）
+- 启用 containerd CRI 插件（disabled_plugins=["cri"] → []）
+- kubeadm certs renew all 续期证书
+- 重新生成 kubelet.conf（kubeadm init phase kubeconfig kubelet）+ 修复 bootstrap-kubelet.conf
+- 验证控制面恢复：master Ready，kubectl 正常
+
+部署
+- 部署全部 7 个 CRD
+- 构建 relay 镜像（busybox + 静态 relay 二进制），本机 docker save → scp → 虚拟机 docker load
+- operator 以进程运行（--enable-relay --relay-image=agent-runtime/event-relay:latest）
+
+端到端验证结果
+- Tenant → Namespace（tenant-a）✅
+- Agent → Sandbox（sb-code-reviewer）✅
+- Sandbox → Pod（agent + event-relay 两容器，共享 agent-socket 卷）✅
+- Event Relay 监听 /var/run/agent.sock ✅
+- Sandbox 状态机：Provisioning → Running，relayReady=true（S2 前置）✅
+- Agent status 回写 Running ✅
+
+验证中发现并修复的产品缺陷
+1. Scheme 未注册类型：groupversion_info.go 缺 SchemeBuilder.Register → "no kind is registered"
+2. buildResourceQuota nil map panic：Hard map 未初始化
+3. runAsNonRoot 未传递：Agent.spec.security → Sandbox.spec.runAsNonRoot（新增字段+CRD）
+4. relay 注入条件：改为 sb.Spec.EnableRelay && cfg.EnableRelay（per-sandbox 权威）
+5. agentCommand：entrypoint 完整命令时不再追加多余 Args
+6. ImagePullPolicy：relay/agent 容器设 IfNotPresent（避免 latest tag 强制拉取）
+7. restrictedSecurityContext：runAsNonRoot 可由 spec 覆盖（不再硬编码 true）
+8. 验证环境注意：本集群 dockershim 不支持 RuntimeClass；PodSecurity restricted 与 root 镜像冲突（验证时降级）
+
+
