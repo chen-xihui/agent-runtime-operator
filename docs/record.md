@@ -94,3 +94,23 @@ M1-b 端到端验证（虚拟机 192.168.0.31 K8S 集群）✅
 8. 验证环境注意：本集群 dockershim 不支持 RuntimeClass；PodSecurity restricted 与 root 镜像冲突（验证时降级）
 
 
+M2 协议层（核心模块实现）🔄
+
+已实现
+- MCP Registry（internal/mcp/registry.go）：工具注册/注销/List，数据级 ABAC 鉴权（P1-4）、限流、脱敏
+- MCP Proxy（internal/mcp/proxy.go）：鉴权→数据过滤注入→调用→脱敏→审计（DLP，P1-1）
+- A2A Gateway（internal/a2a/gateway.go）：AgentCard 注册/发现、任务委派、消息路由、跨租户默认禁止（D-4）+ 联邦信任
+- NATS 事件总线（internal/eventbus/nats.go）：NATS JetStream，租户隔离 subject（R-3）、发布/订阅/投递
+
+验证
+- go build ./... ✅ / go vet ./... ✅
+- 单元测试：mcp（registry+proxy）、a2a（gateway）✅
+- NATS 集成测试（本机 docker 起 nats:2.10）：PublishSubscribe、TenantIsolation（R-3）、JetStream ✅
+
+待办（M2 收尾 / M3）
+- Agent 注册到 MCP Registry + A2A Gateway 的控制器联动（读取 ToolBinding/MCPEndpoint CRD 注入授权）
+- 工具调用端到端（MCP Proxy 转发到真实 Tool Server）
+- 编排引擎（DSL 解析 / DAG / Temporal 委托）— M3
+
+
+
