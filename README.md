@@ -14,12 +14,13 @@
 - **M1-b**：gVisor RuntimeClass + **Event Relay Sidecar**，Agent 经本地 `unix://` socket 收发事件（P0-2 事件通路）
 - **M1 端到端验证** ✅：已在真实 K8S 集群验证 Tenant→Namespace、Agent→Sandbox→Pod（agent+event-relay 两容器）、relay socket 就绪、Sandbox 状态机 `Provisioning→Running`（relayReady=true 前置）
 
-**M2 协议层（核心模块已实现，单元/集成测试通过）**：
+**M2 协议层（核心模块 + 控制器联动已实现，单元/集成测试通过）**：
 
 - **MCP Registry**（`internal/mcp/registry.go`）：工具注册/注销/List，数据级 ABAC 鉴权（P1-4）、限流、脱敏
 - **MCP Proxy**（`internal/mcp/proxy.go`）：代理调用（鉴权→数据过滤注入→调用→脱敏→审计），DLP 出网审计（P1-1）
 - **A2A Gateway**（`internal/a2a/gateway.go`）：AgentCard 注册/发现、任务委派、消息路由、跨租户默认禁止（D-4）+ 联邦信任
 - **NATS 事件总线**（`internal/eventbus/nats.go`）：NATS JetStream 实现，租户隔离 subject（R-3）、事件发布/订阅/投递
+- **Agent↔Registry/Gateway 控制器联动**（`internal/registration`）：Agent Running 时自动读取 `ToolBinding`/`MCPEndpoint` CRD 注入工具授权（R-4），并注册 AgentCard 到 A2A Gateway
 
 核心能力：
 
@@ -79,9 +80,10 @@ agent-runtime-operator/
 │   ├── sandbox/          # 沙箱 Pod 构建与生命周期
 │   ├── relay/            # Event Relay 本地 socket 服务（P0-2）
 │   ├── orchestrator/     # 编排引擎接口（DSL → DAG → Temporal）
-│   ├── eventbus/         # 事件总线接口（NATS JetStream）
-│   ├── mcp/              # MCP Registry / Proxy 接口
-│   └── a2a/              # A2A Gateway 接口
+│   ├── eventbus/         # 事件总线（NATS JetStream 实现）
+│   ├── mcp/              # MCP Registry / Proxy
+│   ├── a2a/              # A2A Gateway
+│   └── registration/     # Agent↔Registry/Gateway 控制器联动
 ├── config/
 │   ├── crd/              # CRD manifests
 │   ├── runtimes/         # RuntimeClass / NetPol
@@ -99,7 +101,7 @@ agent-runtime-operator/
 | 阶段 | 里程碑 | 交付物 |
 |------|--------|--------|
 | M1 | 基础底座 | ✅ M1-a 普通 Pod；✅ M1-b gVisor RuntimeClass + Event Relay Sidecar（本地 socket 通路，S2 前置）；✅ 真实集群端到端验证 |
-| M2 | 协议层 | 🔄 MCP Registry/Proxy、A2A Gateway、NATS 事件总线已实现并通过测试；待：Agent 注册到 Registry/Gateway 的控制器联动、工具调用端到端 |
+| M2 | 协议层 | ✅ MCP Registry/Proxy、A2A Gateway、NATS 事件总线、Agent↔Registry/Gateway 控制器联动；待：工具调用端到端、MCP Proxy 转发到真实 Tool Server |
 | M3 | 编排引擎 | DSL 解析、DAG 执行、事件驱动、重试/补偿、Human-in-the-loop |
 | M4 | 强隔离 | Firecracker 接入、快照 Suspend/Resume、租户安全加固、审计 |
 | M5 | 生产化 | 高可用、可观测、多集群联邦、SDK 与插件市场 |

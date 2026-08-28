@@ -107,8 +107,17 @@ M2 协议层（核心模块实现）🔄
 - 单元测试：mcp（registry+proxy）、a2a（gateway）✅
 - NATS 集成测试（本机 docker 起 nats:2.10）：PublishSubscribe、TenantIsolation（R-3）、JetStream ✅
 
+Agent↔Registry/Gateway 控制器联动 ✅
+
+已实现（internal/registration/sync.go）
+- SyncAgentTools：读取 ToolBinding/MCPEndpoint CRD，注入工具授权到 MCP Registry
+  - ToolBinding.AgentRefs 过滤（Agent 级 vs 租户级，R-4）
+  - 同步工具描述（endpoint/auth/rateLimit/redact）
+- RegisterAgentCard：Agent Running 时注册 AgentCard 到 A2A Gateway（仅 A2A enabled，C2）
+- AgentReconciler 集成：Sandbox Running 时触发 syncRegistration；依赖注入（Syncer）经 main.go
+- 单元测试：ToolBinding 授权注入、AgentRefs 过滤、AgentCard 注册（仅 A2A 启用时）✅
+
 待办（M2 收尾 / M3）
-- Agent 注册到 MCP Registry + A2A Gateway 的控制器联动（读取 ToolBinding/MCPEndpoint CRD 注入授权）
 - 工具调用端到端（MCP Proxy 转发到真实 Tool Server）
 - 编排引擎（DSL 解析 / DAG / Temporal 委托）— M3
 

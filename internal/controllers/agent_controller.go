@@ -14,19 +14,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	"github.com/example/agent-runtime-operator/internal/registration"
 	"github.com/example/agent-runtime-operator/internal/sandbox"
 )
 
-// AgentReconciler 调谐 Agent 资源，创建关联的 Sandbox
+// AgentReconciler 调谐 Agent 资源，创建关联的 Sandbox，
+// 并在 Running 时完成 Agent↔MCP Registry / A2A Gateway 的注册联动（M2）。
 type AgentReconciler struct {
 	client.Client
 	Scheme  *runtime.Scheme
 	Sandbox *sandbox.Controller
+	// Syncer Agent↔Registry/Gateway 联动同步器
+	Syncer *registration.Syncer
 }
 
 // +kubebuilder:rbac:groups=agent.runtime.io,resources=agents,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=agent.runtime.io,resources=agents/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=agent.runtime.io,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=agent.runtime.io,resources=toolbindings,verbs=get;list;watch
+// +kubebuilder:rbac:groups=agent.runtime.io,resources=mcpendpoints,verbs=get;list;watch
 
 // Reconcile 调谐逻辑
 func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -91,11 +97,52 @@ func (r *AgentReconciler) syncStatus(ctx context.Context, agent *agentv1.Agent, 
 	}
 	agent.Status.Phase = sb.Status.Phase
 	if sb.Status.Phase == agentv1.PhaseRunning {
+		// 联动：读取 ToolBinding/MCPEndpoint CRD 注入 MCP Registry，注册 A2A AgentCard
+		if err := r.syncRegistration(ctx, agent); err != nil {
+			// 联动失败不阻塞状态机，记录日志并重试
+			log.FromContext(ctx).Error(err, "failed to sync agent registration", "agent", agent.Name)
+			return ctrl.Result{Requeue: true}, nil
+		}
 		agent.Status.MCPConnectedTools = agent.Spec.MCP.AllowedTools
 		agent.Status.LastHeartbeat = metav1.Now()
 	}
 	_ = r.Status().Update(ctx, agent)
 	return ctrl.Result{}, nil
+}
+
+// syncRegistration 完成 Agent↔MCP Registry / A2A Gateway 的注册联动
+func (r *AgentReconciler) syncRegistration(ctx context.Context, agent *agentv1.Agent) error {
+	if r.Syncer == nil {
+		return nil
+	}
+	tenantID := agent.Namespace
+
+	// 1. 读取 ToolBinding CRD（工具授权唯一来源，R-4）
+	tbList := &agentv1.ToolBindingList{}
+	if err := r.List(ctx, tbList, client.InNamespace(tenantID)); err != nil {
+		return fmt.Errorf("list toolbindings: %w", err)
+	}
+
+	// 2. 读取 MCPEndpoint CRD（工具连接信息）
+	epList := &agentv1.MCPEndpointList{}
+	if err := r.List(ctx, epList, client.InNamespace(tenantID)); err != nil {
+		return fmt.Errorf("list mcpendpoints: %w", err)
+	}
+	endpoints := make(map[string]agentv1.MCPEndpoint, len(epList.Items))
+	for _, ep := range epList.Items {
+		endpoints[ep.Name] = ep
+	}
+
+	// 3. 注入工具授权到 MCP Registry
+	if err := r.Syncer.SyncAgentTools(ctx, tenantID, agent.Name, tbList.Items, endpoints); err != nil {
+		return fmt.Errorf("sync agent tools: %w", err)
+	}
+
+	// 4. 注册 AgentCard 到 A2A Gateway
+	if err := r.Syncer.RegisterAgentCard(ctx, tenantID, agent.Name, agent); err != nil {
+		return fmt.Errorf("register agent card: %w", err)
+	}
+	return nil
 }
 
 // SetupWithManager 注册控制器

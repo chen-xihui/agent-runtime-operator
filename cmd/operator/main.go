@@ -13,7 +13,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	"github.com/example/agent-runtime-operator/internal/a2a"
 	"github.com/example/agent-runtime-operator/internal/controllers"
+	"github.com/example/agent-runtime-operator/internal/mcp"
+	"github.com/example/agent-runtime-operator/internal/registration"
 	"github.com/example/agent-runtime-operator/internal/sandbox"
 )
 
@@ -89,10 +92,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// M2 协议层：构造 MCP Registry / A2A Gateway / 联动同步器
+	mcpRegistry := mcp.NewMemoryRegistry()
+	a2aGateway := a2a.NewMemoryGateway()
+	syncer := registration.NewSyncer(mcpRegistry, a2aGateway)
+
 	if err = (&controllers.AgentReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		Sandbox: sandbox.NewController(mgr.GetClient(), mgr.GetScheme(), sandboxCfg),
+		Syncer:  syncer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Agent")
 		os.Exit(1)
