@@ -1,0 +1,31 @@
+# 示例编排 Workflow（design-doc 4.2.2）
+apiVersion: agent.runtime.io/v1
+kind: Workflow
+metadata:
+  name: code-review-pipeline
+  namespace: tenant-a
+spec:
+  entrypoint: analyze
+  events:
+    - on: "repo.commit.pushed"
+  nodes:
+    - id: analyze
+      agent: code-analyzer
+      action: analyze_repo
+    - id: review
+      agent: code-reviewer
+      action: review_code
+      dependsOn: [analyze]
+      retry:
+        max: 3
+        backoff: exponential
+    - id: comment
+      agent: comment-bot
+      action: post_comment
+      dependsOn: [review]
+      condition: 'nodes.review.result.approved == false'
+    - id: cleanup
+      agent: infra-agent
+      action: cleanup_sandbox
+      dependsOn: [review]
+      always: true

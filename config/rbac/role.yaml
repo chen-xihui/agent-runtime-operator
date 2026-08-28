@@ -1,0 +1,28 @@
+# RBAC —— Agent Runtime Operator 集群角色
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-runtime-operator-role
+rules:
+  # Agent CRD
+  - apiGroups: [agent.runtime.io]
+    resources: [agents, sandboxes, workflows, workflowruns, toolbindings, mcpendpoints]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [agent.runtime.io]
+    resources: [agents/status, sandboxes/status, workflowruns/status]
+    verbs: [get, update, patch]
+  - apiGroups: [agent.runtime.io]
+    resources: [agents/finalizers, sandboxes/finalizers, workflowruns/finalizers]
+    verbs: [update]
+  # Tenant CRD（集群作用域）
+  - apiGroups: [agent.runtime.io]
+    resources: [tenants, tenants/status]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # 核心资源：Namespace / Pod / Quota / Event
+  - apiGroups: [""]
+    resources: [namespaces, pods, resourcequotas, events]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # 可观测指标
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]

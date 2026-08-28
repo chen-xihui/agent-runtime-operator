@@ -1,0 +1,89 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: sandboxes.agent.runtime.io
+spec:
+  group: agent.runtime.io
+  names:
+    kind: Sandbox
+    listKind: SandboxList
+    plural: sandboxes
+    singular: sandbox
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          description: Sandbox 是沙箱实例资源
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: SandboxSpec 沙箱期望状态
+              type: object
+              required:
+                - agentRef
+                - runtimeClass
+                - image
+              properties:
+                agentRef:
+                  type: string
+                runtimeClass:
+                  type: string
+                resources:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                image:
+                  type: string
+                entrypoint:
+                  type: array
+                  items:
+                    type: string
+                enableRelay:
+                  type: boolean
+            status:
+              description: SandboxStatus 沙箱实际状态
+              type: object
+              properties:
+                phase:
+                  type: string
+                runtimeClass:
+                  type: string
+                podName:
+                  type: string
+                networkPolicy:
+                  type: string
+                mountInfo:
+                  type: object
+                  properties:
+                    pvc:
+                      type: string
+                    encrypted:
+                      type: boolean
+                relayReady:
+                  type: boolean
+                lastTransitionTime:
+                  type: string
+                  format: date-time
+                message:
+                  type: string
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Pod
+          type: string
+          jsonPath: .status.podName
+        - name: Relay
+          type: string
+          jsonPath: .status.relayReady

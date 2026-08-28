@@ -1,0 +1,14 @@
+# 示例租户 tenant-a（design-doc 4.1 / 5.1）
+apiVersion: agent.runtime.io/v1
+kind: Tenant
+metadata:
+  name: tenant-a
+spec:
+  quota:
+    maxSandboxes: 10
+    maxAgents: 20
+    maxCpu: "8"
+    maxMemory: "16Gi"
+  networkPolicy: tenant-a-default-deny
+  labels:
+    team: platform

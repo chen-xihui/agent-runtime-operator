@@ -1,0 +1,13 @@
+# gVisor RuntimeClass —— 高吞吐、性能敏感的内部 Agent（design-doc 4.1.2）
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+overhead:
+  podFixed:
+    cpu: 100m
+    memory: 64Mi
+scheduling:
+  nodeSelector:
+    agent.runtime.io/runtime: gvisor

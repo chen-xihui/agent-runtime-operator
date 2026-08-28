@@ -1,0 +1,53 @@
+# Operator Deployment —— 控制面核心（design-doc 9.1 控制面/数据面分离）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-runtime-operator
+  namespace: agent-runtime-system
+  labels:
+    control-plane: agent-runtime-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: agent-runtime-operator
+  template:
+    metadata:
+      labels:
+        control-plane: agent-runtime-operator
+    spec:
+      serviceAccountName: agent-runtime-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: manager
+          image: registry.internal/agent-runtime/operator:latest
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

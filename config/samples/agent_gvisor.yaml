@@ -1,0 +1,36 @@
+# M1-a/b 示例：gVisor 沙箱 Agent（design-doc 5.2 / core-interface 6）
+# 前提：已创建 tenant-a；如未创建 gVisor RuntimeClass 可先按 M1-a 普通 Pod 运行。
+apiVersion: agent.runtime.io/v1
+kind: Agent
+metadata:
+  name: code-reviewer
+  namespace: tenant-a
+spec:
+  image: busybox:1.36
+  runtime:
+    class: gvisor
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  entrypoint:
+    - /bin/sh
+  mcp:
+    allowedTools:
+      - code.search
+      - db.query
+    endpoints:
+      - mcp-code
+  capabilities:
+    protocols: [a2a, mcp]
+  a2a:
+    enabled: true
+    tasks: ["review_code", "generate_comment"]
+  security:
+    runAsNonRoot: true
+    readOnlyRootFS: true
+    networkPolicy: tenant-a-default-deny
+    maxLifetimeMin: 60

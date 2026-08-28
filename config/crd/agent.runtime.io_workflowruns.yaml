@@ -1,0 +1,68 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: workflowruns.agent.runtime.io
+spec:
+  group: agent.runtime.io
+  names:
+    kind: WorkflowRun
+    listKind: WorkflowRunList
+    plural: workflowruns
+    singular: workflowrun
+    shortNames:
+      - wfr
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          description: WorkflowRun 是一次执行实例资源
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: WorkflowRunSpec 一次执行实例
+              type: object
+              required:
+                - workflowRef
+              properties:
+                workflowRef:
+                  type: string
+                input:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+            status:
+              description: WorkflowRunStatus 执行实例状态
+              type: object
+              properties:
+                runId:
+                  type: string
+                phase:
+                  type: string
+                currentNode:
+                  type: string
+                nodeResults:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                error:
+                  type: string
+                eventsCount:
+                  type: integer
+                  format: int64
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: RunID
+          type: string
+          jsonPath: .status.runId

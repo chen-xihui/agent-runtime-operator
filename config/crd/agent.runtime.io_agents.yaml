@@ -1,0 +1,150 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: agents.agent.runtime.io
+spec:
+  group: agent.runtime.io
+  names:
+    kind: Agent
+    listKind: AgentList
+    plural: agents
+    singular: agent
+    shortNames:
+      - agt
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          description: Agent 是 Agent 编排资源
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: AgentSpec 定义 Agent 的期望状态
+              type: object
+              required:
+                - image
+                - runtime
+                - mcp
+                - security
+              properties:
+                image:
+                  type: string
+                runtime:
+                  description: RuntimeSpec 沙箱运行时
+                  type: object
+                  required:
+                    - class
+                  properties:
+                    class:
+                      type: string
+                    resources:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    snapshotEnabled:
+                      type: boolean
+                entrypoint:
+                  type: array
+                  items:
+                    type: string
+                mcp:
+                  description: MCPSpec 工具接入配置
+                  type: object
+                  required:
+                    - allowedTools
+                    - endpoints
+                  properties:
+                    allowedTools:
+                      type: array
+                      items:
+                        type: string
+                    endpoints:
+                      type: array
+                      items:
+                        type: string
+                    whitelistDomains:
+                      type: array
+                      items:
+                        type: string
+                a2a:
+                  description: A2ASpec Agent 互操作配置
+                  type: object
+                  required:
+                    - enabled
+                  properties:
+                    enabled:
+                      type: boolean
+                    tasks:
+                      type: array
+                      items:
+                        type: string
+                    agentCard:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                capabilities:
+                  type: object
+                  properties:
+                    protocols:
+                      type: array
+                      items:
+                        type: string
+                security:
+                  description: SecuritySpec 安全配置
+                  type: object
+                  required:
+                    - runAsNonRoot
+                    - networkPolicy
+                  properties:
+                    runAsNonRoot:
+                      type: boolean
+                    readOnlyRootFS:
+                      type: boolean
+                    networkPolicy:
+                      type: string
+                    envSecrets:
+                      type: array
+                      items:
+                        type: string
+                    seccompProfile:
+                      type: string
+                    maxLifetimeMin:
+                      type: integer
+                labels:
+                  type: object
+                  additionalProperties:
+                    type: string
+            status:
+              description: AgentStatus 实际状态
+              type: object
+              properties:
+                phase:
+                  type: string
+                sandboxRef:
+                  type: string
+                mcpConnectedTools:
+                  type: array
+                  items:
+                    type: string
+                lastHeartbeat:
+                  type: string
+                  format: date-time
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Sandbox
+          type: string
+          jsonPath: .status.sandboxRef

@@ -1,0 +1,7 @@
+# Operator 部署命名空间（控制面，与租户数据面分离，ADR-04）
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-runtime-system
+  labels:
+    control-plane: agent-runtime-operator

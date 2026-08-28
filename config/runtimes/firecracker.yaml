@@ -1,0 +1,19 @@
+# Firecracker RuntimeClass —— 强隔离、低信任的不可信负载（design-doc 4.1.2，M4 接入）
+# 注意：Firecracker 节点需 /dev/kvm（design-doc 9.1）
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: firecracker
+handler: kata-fc
+overhead:
+  podFixed:
+    cpu: 250m
+    memory: 128Mi
+scheduling:
+  nodeSelector:
+    agent.runtime.io/runtime: firecracker
+    agent.runtime.io/kvm: "true"
+  tolerations:
+    - key: agent.runtime.io/firecracker
+      operator: Exists
+      effect: NoSchedule

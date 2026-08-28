@@ -1,0 +1,63 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: toolbindings.agent.runtime.io
+spec:
+  group: agent.runtime.io
+  names:
+    kind: ToolBinding
+    listKind: ToolBindingList
+    plural: toolbindings
+    singular: toolbinding
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: ToolBinding 是工具权限绑定资源（R-4，权限唯一来源）
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: ToolBindingSpec Agent ↔ 工具权限绑定
+              type: object
+              required:
+                - tools
+              properties:
+                agentRefs:
+                  type: array
+                  items:
+                    type: string
+                tools:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                    properties:
+                      name:
+                        type: string
+                      dataScope:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      rateLimit:
+                        type: object
+                        properties:
+                          rps:
+                            type: integer
+                          burst:
+                            type: integer
+                          monthly:
+                            type: integer
+                      redact:
+                        type: array
+                        items:
+                          type: string

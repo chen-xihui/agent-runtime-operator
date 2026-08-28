@@ -1,0 +1,50 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mcpendpoints.agent.runtime.io
+spec:
+  group: agent.runtime.io
+  names:
+    kind: MCPEndpoint
+    listKind: MCPEndpointList
+    plural: mcpendpoints
+    singular: mcpendpoint
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: MCPEndpoint 是工具 Server 连接信息资源（R-4）
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: MCPEndpointSpec 工具 Server 连接信息
+              type: object
+              required:
+                - address
+                - transport
+              properties:
+                address:
+                  type: string
+                transport:
+                  type: string
+                auth:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    secretRef:
+                      type: string
+                whitelistDomains:
+                  type: array
+                  items:
+                    type: string
