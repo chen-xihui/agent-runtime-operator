@@ -91,6 +91,22 @@ func GenericOrchestratorWorkflow(ctx workflow.Context, data *ExecutionData, inpu
 		// 构造前序节点结果（确定性输入，供条件求值）
 		nodeResultsForInput := buildNodeResultsView(results)
 
+		// Human-in-the-loop：Approval 节点暂停等待人工审批（design-doc 4.2.5）
+		if node.Kind == NodeKindApproval {
+			approvalRes, err := runApprovalNode(ctx, node, cur, input)
+			if err != nil {
+				return err
+			}
+			results[cur] = &approvalRes
+			// 拒绝时：非 Always 节点触发整个运行失败（或由后续节点处理）
+			if approvalRes.State == "REJECTED" && !node.Always {
+				return temporal.NewNonRetryableApplicationError(
+					"approval rejected at node: "+cur, "Orchestration", nil)
+			}
+			fanOut(cur, dependents, pendingDeps, &readyQueue)
+			continue
+		}
+
 		// 派发节点（Activity；内部完成条件求值 + 发起 Agent 任务）
 		dispatchErr := workflow.ExecuteActivity(
 			workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
@@ -194,6 +210,56 @@ func fanOut(done string, dependents map[string][]string, pendingDeps map[string]
 			*readyQueue = append(*readyQueue, next)
 		}
 	}
+}
+
+// runApprovalNode 执行 Approval 节点：派发审批请求（AGENT_ASK_HUMAN）并等待人工审批结果。
+// 确定性约束（R-1）：审批通知经 Activity（I/O 收敛），审批结果经 Signal 确定性等待。
+func runApprovalNode(ctx workflow.Context, node *Node, nodeID string, input map[string]interface{}) (NodeResult, error) {
+	// 1. 派发审批请求（Activity：触发 AGENT_ASK_HUMAN，通知外部工单系统）
+	req := ApprovalRequest{
+		RunID:  workflow.GetInfo(ctx).WorkflowExecution.ID,
+		NodeID: nodeID,
+		Agent:  node.Agent,
+		Action: node.Action,
+	}
+	err := workflow.ExecuteActivity(
+		workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: time.Minute,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+		}),
+		"RequestApprovalActivity",
+		req,
+	).Get(ctx, nil)
+	if err != nil {
+		return NodeResult{}, err
+	}
+
+	// 2. 确定性等待审批结果 Signal（超时未审批按拒绝处理，R-1）
+	approvalCh := workflow.GetSignalChannel(ctx, approvalResultSignal)
+	var res ApprovalResult
+	selector := workflow.NewSelector(ctx)
+	timeout := workflow.NewTimer(ctx, approvalTimeout)
+	selector.AddReceive(approvalCh, func(c workflow.ReceiveChannel, more bool) {
+		c.Receive(ctx, &res)
+	})
+	selector.AddFuture(timeout, func(f workflow.Future) {
+		res = ApprovalResult{NodeID: nodeID, Decision: ApprovalRejected}
+	})
+	selector.Select(ctx)
+
+	state := ApprovalApproved
+	if res.Decision == ApprovalRejected {
+		state = "REJECTED"
+	}
+	return NodeResult{
+		NodeID: nodeID,
+		State:  state,
+		Output: map[string]interface{}{
+			"decision": res.Decision,
+			"approver": res.Approver,
+			"comment":  res.Comment,
+		},
+	}, nil
 }
 
 // shouldRetry 判断是否重试

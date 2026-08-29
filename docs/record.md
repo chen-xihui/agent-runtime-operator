@@ -189,9 +189,19 @@ Temporal 通用编排 Workflow ✅
   Sequential（DAG 顺序）/ NodeFailedThenRetry / EmptyData / ShouldRetry ✅
 - 修复 relay 测试竞态（connectionCount 等待连接就绪，-count=3 稳定）
 
-待办（M3 收尾 / M4）
-- Human-in-the-loop（approval 节点，AGENT_ASK_HUMAN 事件）
-- Firecracker 强隔离（M4）
+Human-in-the-loop（approval 节点）✅
+
+已实现（internal/orchestrator/approval*.go + workflow.go）
+- NodeKindApproval（kind: approval）节点：暂停流程等待人工审批
+- RequestApprovalActivity：触发 AGENT_ASK_HUMAN，通知外部工单系统（ApprovalNotifier 可注入）
+- runApprovalNode：确定性等待审批结果 Signal（approval-result）
+  - workflow.Selector 监听 approval-result + 超时 Timer（R-1 确定性）
+  - 审批通过 → APPROVED；拒绝 → REJECTED；超时未审批 → 按拒绝处理
+  - 拒绝时非 Always 节点 → 整个运行失败
+- 单元测试（Temporal testsuite）：ApprovalApproved（通过后 DAG 继续）/ ApprovalRejected（拒绝致失败）✅
+
+待办（M4）
+- Firecracker 强隔离（快照 Suspend/Resume、租户安全加固、审计）
 
 
 

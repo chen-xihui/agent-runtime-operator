@@ -32,6 +32,7 @@
 - **WorkflowRun 控制器**（`internal/controllers/workflowrun_controller.go`）：创建时解析 `Workflow`→编译→委托 Temporal 执行，回写 `runID`/`phase`（R-5 只读快照）；取消时调用引擎 Cancel
 - **事件驱动节点推进**（`internal/controllers/workflowrun_events.go`）：订阅 NATS 事件总线，节点结果事件幂等推进 `status.nodeResults`/`currentNode`/`eventsCount`（P1-3 去重），全节点终态后判定 `SUCCEEDED`/`FAILED`
 - **Temporal 通用编排 Workflow**（`internal/orchestrator/workflow.go` + `activity.go`）：`GenericOrchestratorWorkflow` 按 `ExecutionData` 数据驱动执行 DAG（拓扑推进、重试/补偿、条件节点、Always 节点），`DispatchNodeActivity` 派发节点到 Agent 沙箱；严格遵循 R-1 确定性约束（I/O 全收敛到 Activity，Signal 确定性等待）
+- **Human-in-the-loop**（`internal/orchestrator/approval*.go`）：`kind: approval` 节点暂停流程，触发 `AGENT_ASK_HUMAN` 通知外部工单系统，确定性等待审批结果 Signal（通过/拒绝，超时按拒绝处理）；拒绝时非 Always 节点触发运行失败
 
 核心能力：
 
@@ -114,7 +115,7 @@ agent-runtime-operator/
 |------|--------|--------|
 | M1 | 基础底座 | ✅ M1-a 普通 Pod；✅ M1-b gVisor RuntimeClass + Event Relay Sidecar（本地 socket 通路，S2 前置）；✅ 真实集群端到端验证 |
 | M2 | 协议层 | ✅ MCP Registry/Proxy、A2A Gateway、NATS 事件总线、Agent↔Registry/Gateway 控制器联动、MCP 工具调用端到端（真实 Tool Server 验证） |
-| M3 | 编排引擎 | ✅ DSL 解析、CEL 条件、Temporal 委托、WorkflowRun 控制器、事件驱动节点推进、Temporal 通用编排 Workflow（数据驱动 DAG + 重试/补偿）；待：Human-in-the-loop（approval 节点） |
+| M3 | 编排引擎 | ✅ DSL 解析、CEL 条件、Temporal 委托、WorkflowRun 控制器、事件驱动节点推进、Temporal 通用编排 Workflow（数据驱动 DAG + 重试/补偿）、Human-in-the-loop（approval 节点） |
 | M4 | 强隔离 | Firecracker 接入、快照 Suspend/Resume、租户安全加固、审计 |
 | M5 | 生产化 | 高可用、可观测、多集群联邦、SDK 与插件市场 |
 
