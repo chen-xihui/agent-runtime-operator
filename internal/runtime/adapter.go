@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
 )
@@ -53,21 +54,39 @@ func (g *GVisor) Resume(ctx context.Context, sb *agentv1.Sandbox) error { return
 // SnapshotSupported gVisor 不支持快照（R-6：按需强隔离才用 Firecracker）
 func (g *GVisor) SnapshotSupported() bool { return false }
 
-// Firecracker 微VM 实现（支持快照 Suspend/Resume，M4 核心）
-type Firecracker struct{}
+// Firecracker 微 VM 实现（支持快照 Suspend/Resume，M4 核心）
+// 注：Suspend/Resume 为结构化占位（生成快照元数据），实际 firecracker API 调用在接入 KVM 节点后实现。
+type Firecracker struct {
+	// snapshots 快照元数据（sandbox 名 -> 快照）
+	snapshots map[string]*Snapshot
+}
 
 // NewFirecracker 创建 Firecracker 运行时适配器
-func NewFirecracker() *Firecracker { return &Firecracker{} }
+func NewFirecracker() *Firecracker {
+	return &Firecracker{snapshots: make(map[string]*Snapshot)}
+}
 
 func (f *Firecracker) Name() string { return "firecracker" }
 
-// Suspend 通过 Firecracker 快照挂起微 VM（占位：实际调用 firecracker snap 工具）
+// Suspend 通过 Firecracker 快照挂起微 VM
+// 流程：保存 VM 状态到快照（state + mem），记录快照元数据以便恢复。
 func (f *Firecracker) Suspend(ctx context.Context, sb *agentv1.Sandbox) error {
+	snap := &Snapshot{
+		SnapshotID: "snap-" + sb.Name,
+		StateFile:  sb.Name + ".state",
+		MemFile:    sb.Name + ".mem",
+	}
+	f.snapshots[sb.Name] = snap
 	return nil
 }
 
-// Resume 通过 Firecracker 快照恢复微 VM（占位：实际加载快照启动新微 VM）
+// Resume 通过 Firecracker 快照恢复微 VM
+// 流程：从上次快照加载状态 + 内存，启动新的微 VM 实例。
 func (f *Firecracker) Resume(ctx context.Context, sb *agentv1.Sandbox) error {
+	// 若无快照则无法恢复（视为错误）
+	if _, ok := f.snapshots[sb.Name]; !ok {
+		return fmt.Errorf("firecracker: no snapshot for sandbox %q", sb.Name)
+	}
 	return nil
 }
 

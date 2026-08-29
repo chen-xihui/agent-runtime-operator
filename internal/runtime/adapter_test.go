@@ -58,6 +58,26 @@ func TestAdapter_SuspendResume(t *testing.T) {
 	}
 }
 
+func TestFirecracker_ResumeWithoutSnapshot(t *testing.T) {
+	ctx := context.Background()
+	fc := NewFirecracker()
+	sb := &agentv1.Sandbox{}
+	sb.Name = "sb-nosnap"
+
+	// 未 Suspend 直接 Resume 应报错（无快照）
+	if err := fc.Resume(ctx, sb); err == nil {
+		t.Fatal("expected error when resuming without snapshot")
+	}
+
+	// Suspend 后 Resume 应成功
+	if err := fc.Suspend(ctx, sb); err != nil {
+		t.Fatalf("suspend: %v", err)
+	}
+	if err := fc.Resume(ctx, sb); err != nil {
+		t.Fatalf("resume after suspend: %v", err)
+	}
+}
+
 func TestRegistry_UnknownRuntime(t *testing.T) {
 	r := NewRegistry()
 	// 未知运行时兜底为 gVisor

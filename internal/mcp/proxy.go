@@ -3,6 +3,8 @@ package mcp
 import (
 	"context"
 	"log"
+
+	"github.com/example/agent-runtime-operator/internal/audit"
 )
 
 // Invoker 底层工具调用器（实际转发到 MCP Server）
@@ -27,6 +29,8 @@ type MemoryProxy struct {
 	invoker  Invoker
 	// audit 审计回调（DLP 全量出网审计，P1-1）
 	audit func(tenantID, agentID, toolName string, args, result map[string]any, err error)
+	// store 审计存储（落库，P1-1 DLP）
+	store audit.Store
 }
 
 // NewMemoryProxy 创建内存 MCP 代理
@@ -35,6 +39,7 @@ func NewMemoryProxy(tenantID string, registry *MemoryRegistry) *MemoryProxy {
 		tenantID: tenantID,
 		registry: registry,
 		invoker:  DefaultInvoker,
+		store:    audit.NoopStore{},
 	}
 }
 
@@ -47,6 +52,14 @@ func (p *MemoryProxy) WithInvoker(inv Invoker) *MemoryProxy {
 // WithAudit 设置审计回调
 func (p *MemoryProxy) WithAudit(a func(tenantID, agentID, toolName string, args, result map[string]any, err error)) *MemoryProxy {
 	p.audit = a
+	return p
+}
+
+// WithAuditStore 设置审计存储（落库 DLP 审计）
+func (p *MemoryProxy) WithAuditStore(s audit.Store) *MemoryProxy {
+	if s != nil {
+		p.store = s
+	}
 	return p
 }
 
@@ -85,6 +98,25 @@ func (p *MemoryProxy) doAudit(agentID, toolName string, args, result map[string]
 	} else {
 		log.Printf("mcp audit: tenant=%s agent=%s tool=%s err=%v", p.tenantID, agentID, toolName, err)
 	}
+	// DLP 全量出网审计落库（P1-1）
+	if p.store != nil {
+		rec := &audit.Record{
+			TenantID: p.tenantID,
+			AgentID:  agentID,
+			Action:   audit.ActionToolCall,
+			Resource: toolName,
+			Success:  err == nil,
+			Error:    errString(err),
+		}
+		_ = p.store.Write(context.Background(), rec)
+	}
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 var _ Proxy = (*MemoryProxy)(nil)

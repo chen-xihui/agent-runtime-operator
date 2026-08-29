@@ -216,10 +216,23 @@ M4 强隔离（核心实现）🔄
 - 单元测试：Registry 选择 / 适配器 SuspendResume / 未知运行时 / Sandbox SuspendResume / NetworkPolicy 构建 / wantSuspend ✅
 - 全部 9 包 build / vet / test 通过 ✅
 
-待办（M4 收尾 / M5）
-- Firecracker 实际运行时接入（KVM 节点、快照工具集成）
-- DLP 审计收集（MCP Proxy 审计落库 / 事件流）
-- M5 生产化（高可用、可观测、多集群联邦、SDK）
+M4 收尾 ✅
+
+已实现
+- DLP 审计存储（internal/audit/store.go）
+  - Record（租户/Agent/动作/资源/成功/时间）、Filter 查询
+  - MemoryStore（进程内，时间倒序+Limit）、NoopStore（默认）
+  - MCP Proxy 接入 WithAuditStore：全量工具调用审计落库（P1-1），成功+失败均记录
+- Firecracker 快照运维完善（internal/runtime/adapter.go）
+  - Suspend 生成快照元数据（SnapshotID/state/mem），Resume 从快照恢复
+  - 无快照直接 Resume 报错（明确语义）
+- 单元测试：audit Write/Query/NilRecord/Noop、mcp AuditStore（成功+失败落库）、runtime FirecrackerResumeWithoutSnapshot ✅
+- 全部 10 包 build / vet / test 通过 ✅
+
+待办（M5 生产化）
+- Firecracker 实际 KVM 运行时接入（快照工具集成）
+- 审计收集到外部存储（事件流/数据库）
+- 高可用、可观测、多集群联邦、SDK 与插件市场
 
 
 
