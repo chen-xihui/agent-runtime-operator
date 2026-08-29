@@ -53,6 +53,9 @@ spec:
                   type: boolean
                 runAsNonRoot:
                   type: boolean
+                suspend:
+                  description: 期望挂起（M4：Firecracker 快照 Suspend/Resume；nil/false 表示运行）
+                  type: boolean
             status:
               description: SandboxStatus 沙箱实际状态
               type: object

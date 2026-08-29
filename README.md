@@ -6,7 +6,7 @@
 
 > 详细设计见 [`docs/design-doc.md`](docs/design-doc.md) 与 [`docs/core-interface.md`](docs/core-interface.md)。
 
-## 当前状态（M1 ✅ + M2 进行中）
+## 当前状态（M1-M5 全链路，M1/M4 经真实集群端到端验证）
 
 **M1 基础底座（已达成并经真实集群端到端验证）**：
 

@@ -65,7 +65,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			Resources:    agent.Spec.Runtime.Resources,
 			Image:        agent.Spec.Image,
 			Entrypoint:   agent.Spec.Entrypoint,
-			EnableRelay:  agent.Spec.A2A.Enabled || agent.Spec.MCP.AllowedTools != nil,
+			EnableRelay:  agent.Spec.A2A.Enabled || len(agent.Spec.MCP.AllowedTools) > 0,
 			RunAsNonRoot: boolPtr(agent.Spec.Security.RunAsNonRoot),
 		},
 	}

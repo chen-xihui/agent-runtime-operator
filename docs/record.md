@@ -268,4 +268,29 @@ M5 高可用 + 多集群联邦 ✅
 - 联邦接入 A2A Gateway（跨集群 Agent 委派端到端）
 
 
+M1-M4 集群端到端验证（虚拟机 192.168.0.31）✅
+
+验证结果
+- M1：Tenant→Namespace、Agent→Sandbox→Pod（busybox 普通 Pod 版）✅
+  - 状态机 Provisioning→Running 正确
+- M4：租户默认 NetworkPolicy Deny-All（tenant-default-deny）✅
+- M4：ResourceQuota（limits.cpu/memory）✅
+- M4：Sandbox Suspend（Running→Suspended，spec.suspend=true）✅
+- M4：Sandbox Resume（Suspended→Running，spec.suspend=false）✅
+- M2：ToolBinding/MCPEndpoint CRD 创建 + Agent 联动（读取授权注入）无报错 ✅
+
+发现并修复的产品 Bug
+1. 空数组错误触发 Event Relay（agent_controller.go）
+   - agent.Spec.MCP.AllowedTools != nil 对空数组 [] 返回 true
+   - 修复：len(agent.Spec.MCP.AllowedTools) > 0
+2. CRD 缺 suspend 字段（config/crd/agent.runtime.io_sandboxes.yaml）
+   - Go 类型有 Suspend 但 CRD manifest 未同步，APIServer 拒绝
+   - 修复：CRD manifest 添加 suspend 字段
+
+验证环境处理
+- setsid 启动 operator 确保后台存活（nohup 在 SSH 断开会被杀）
+- tenant-m4 PodSecurity 降级 privileged（busybox 需 root，同 M1-b 处理）
+- 清理 tenant-a Terminating namespace（旧资源残留）
+
+
 
