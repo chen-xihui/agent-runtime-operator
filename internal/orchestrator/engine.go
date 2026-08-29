@@ -9,10 +9,10 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
-// GenericOrchestratorWorkflow Temporal 中预注册的通用编排 Workflow 名
+// GenericOrchestratorWorkflowName Temporal 中预注册的通用编排 Workflow 名
 // 职责收敛（ADR-02 / P0-1）：平台不自研调度器，DSL 编译为 ExecutionData，
 // 由该通用 Workflow 按数据解释执行；重试/补偿/确定性重放由 Temporal 承担。
-const GenericOrchestratorWorkflow = "GenericOrchestratorWorkflow"
+const GenericOrchestratorWorkflowName = "GenericOrchestratorWorkflow"
 
 // TemporalEngine 基于 Temporal 的 DAG 执行引擎（数据驱动）
 // 把 ExecutionData 作为 Workflow 输入启动，事件驱动节点推进。
@@ -48,7 +48,7 @@ func (e *TemporalEngine) Execute(data *ExecutionData, input map[string]interface
 	run, err := e.client.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: e.taskQueue,
-	}, GenericOrchestratorWorkflow, data, input)
+	}, GenericOrchestratorWorkflowName, data, input)
 	if err != nil {
 		return "", fmt.Errorf("start orchestration workflow: %w", err)
 	}

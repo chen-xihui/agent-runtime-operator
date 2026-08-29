@@ -12,6 +12,18 @@ import (
 	"github.com/example/agent-runtime-operator/internal/eventbus"
 )
 
+// waitForRelayConnections 等待 relay 识别到指定数量的连接（避免竞态）
+func waitForRelayConnections(t *testing.T, r *Relay, n int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for r.connectionCount() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d relay connections, got %d", n, r.connectionCount())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestRelayDeliverAndReceive(t *testing.T) {
 	dir := t.TempDir()
 	sock := filepath.Join(dir, "agent.sock")
@@ -40,6 +52,9 @@ func TestRelayDeliverAndReceive(t *testing.T) {
 		t.Fatalf("dial socket: %v", err)
 	}
 	defer conn.Close()
+
+	// 等待 relay 的 acceptLoop 识别该连接（避免事件投递到空连接集合丢失）
+	waitForRelayConnections(t, r, 1)
 
 	// 服务端投递事件，Agent 应收到
 	deliverEvt := &eventbus.CloudEvent{

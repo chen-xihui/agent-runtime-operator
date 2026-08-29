@@ -88,6 +88,13 @@ func (r *Relay) DeliverToAgent(ctx context.Context, evt *eventbus.CloudEvent) er
 	}
 }
 
+// connectionCount 返回当前已连接的 Agent 客户端数（测试辅助）
+func (r *Relay) connectionCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.conns)
+}
+
 // Close 关闭监听与所有连接
 func (r *Relay) Close() error {
 	r.mu.Lock()

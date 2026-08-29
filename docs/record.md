@@ -172,9 +172,25 @@ WorkflowRun 控制器 ✅
 - main.go：--nats-url flag 订阅事件总线转发给 NodeEventProcessor（与 WorkflowRun 控制器联动）
 - 单元测试：Progress（状态推进+完成判定）/ Idempotency（去重）/ Failure（FAILED）/ UnknownRunID / ParseNodeSubject ✅
 
+Temporal 通用编排 Workflow ✅
+
+已实现（internal/orchestrator/workflow.go + activity.go）
+- GenericOrchestratorWorkflow：按 ExecutionData 数据驱动执行 DAG
+  - 依赖拓扑推进（pendingDeps + fanOut，顺序执行就绪队列）
+  - 节点派发（DispatchNodeActivity Activity，I/O 收敛到 Activity，R-1）
+  - 节点结果 Signal 确定性等待（resultCh.Receive，R-1）
+  - 重试（指数退避，shouldRetry；失败未超 max 重派发）
+  - Always 补偿节点（派发失败仍继续，不阻断 DAG）
+  - 条件节点（Condition 传入 Activity 求值，跳过则 NODE_SKIPPED）
+- DispatchNodeActivity：条件求值（CEL）+ 派发 NODE_STARTED + Agent 任务派发
+  - NodeDispatcher 可注入（Dispatch/EventSink/Condition），可测
+- DispatchInput 扩展 Condition 字段（条件表达式携带）
+- 单元测试（Temporal testsuite + mock activity + RegisterDelayedCallback 确定性发 Signal）：
+  Sequential（DAG 顺序）/ NodeFailedThenRetry / EmptyData / ShouldRetry ✅
+- 修复 relay 测试竞态（connectionCount 等待连接就绪，-count=3 稳定）
+
 待办（M3 收尾 / M4）
-- Temporal 通用编排 Workflow 定义（GenericOrchestratorWorkflow 实现）
-- 重试/补偿策略执行、Human-in-the-loop（approval 节点）
+- Human-in-the-loop（approval 节点，AGENT_ASK_HUMAN 事件）
 - Firecracker 强隔离（M4）
 
 
