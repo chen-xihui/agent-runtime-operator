@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	"github.com/example/agent-runtime-operator/internal/metrics"
 	"github.com/example/agent-runtime-operator/internal/sandbox"
 )
 
@@ -124,6 +125,9 @@ func (r *SandboxReconciler) setPhase(sb *agentv1.Sandbox, phase, msg string) {
 	if sb.Status.Phase == phase {
 		return
 	}
+	// 可观测性指标（M5）：记录状态迁移
+	metrics.ObserveSandboxTransition(sb.Namespace, sb.Status.Phase, phase)
+
 	sb.Status.Phase = phase
 	sb.Status.Message = msg
 	sb.Status.LastTransitionTime = metav1.Now()

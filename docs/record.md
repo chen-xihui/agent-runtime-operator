@@ -229,10 +229,29 @@ M4 收尾 ✅
 - 单元测试：audit Write/Query/NilRecord/Noop、mcp AuditStore（成功+失败落库）、runtime FirecrackerResumeWithoutSnapshot ✅
 - 全部 10 包 build / vet / test 通过 ✅
 
-待办（M5 生产化）
-- Firecracker 实际 KVM 运行时接入（快照工具集成）
-- 审计收集到外部存储（事件流/数据库）
-- 高可用、可观测、多集群联邦、SDK 与插件市场
+M5 生产化（可观测性）🔄
+
+已实现
+- Metrics（internal/metrics/metrics.go）
+  - 编排：runs_started / run_duration / events_total
+  - 沙箱：state_transitions / active（按运行时）
+  - 工具：tool_calls（按租户/工具/结果）、mcp_errors
+  - 注册到 controller-runtime /metrics 端点（Prometheus）
+  - 接入点：WorkflowRunReconciler（run 指标）、NodeEventProcessor（事件）、SandboxReconciler（状态迁移）、MCP Proxy（工具调用）
+- 全链路追踪（internal/telemetry/trace.go）
+  - W3C Trace Context（traceparent）生成/解析/子 span 派生
+  - eventbus Subscribe 自动注入 traceparent（链路连续）
+- 结构化日志（internal/telemetry/logging.go）
+  - 租户/Agent 维度索引（WithTenant）
+  - 敏感字段脱敏（token/secret/password/credential，DLP）
+- 单元测试：metrics Observe/Values、telemetry trace 生成/解析/子 span、logging RedactMap/RedactString/IsSensitiveKey ✅
+- 全部 12 包 build / vet / test 通过 ✅
+
+待办（M5 收尾）
+- 高可用（多副本/沙箱跨节点）
+- 多集群联邦（FederationPolicy、跨集群 Agent 路由）
+- 开放 SDK 与插件市场
+- Firecracker 实际 KVM 运行时接入、审计收集到外部存储
 
 
 

@@ -12,6 +12,7 @@ import (
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
 	"github.com/example/agent-runtime-operator/internal/eventbus"
+	"github.com/example/agent-runtime-operator/internal/metrics"
 	"github.com/example/agent-runtime-operator/internal/orchestrator"
 )
 
@@ -99,6 +100,9 @@ func (r *WorkflowRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// 回写 runID + RUNNING
 	r.updateStatus(ctx, run, agentv1.PhaseRunRunning, runID, "", "")
 	logger.Info("workflow run started", "run", run.Name, "workflow", workflow.Name, "runID", runID)
+
+	// 可观测性指标（M5）
+	metrics.ObserveRunStarted(run.Namespace, workflow.Name)
 	return ctrl.Result{}, nil
 }
 

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	"github.com/example/agent-runtime-operator/internal/telemetry"
 )
 
 // NatsConfig NATS 连接配置
@@ -119,6 +121,10 @@ func (b *NatsBus) Subscribe(ctx context.Context, tenantID, topic string, h Handl
 		evt := &CloudEvent{}
 		if err := json.Unmarshal(msg.Data, evt); err != nil {
 			return
+		}
+		// 全链路追踪（M5）：无 traceparent 则生成，保证链路连续
+		if evt.TraceParent == "" {
+			evt.TraceParent = telemetry.NewTraceContext().Traceparent()
 		}
 		if err := h(ctx, evt); err != nil {
 			// 处理失败，NATS 自动重投

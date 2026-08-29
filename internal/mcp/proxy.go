@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/example/agent-runtime-operator/internal/audit"
+	"github.com/example/agent-runtime-operator/internal/metrics"
 )
 
 // Invoker 底层工具调用器（实际转发到 MCP Server）
@@ -110,6 +111,14 @@ func (p *MemoryProxy) doAudit(agentID, toolName string, args, result map[string]
 		}
 		_ = p.store.Write(context.Background(), rec)
 	}
+
+	// 可观测性指标（M5）
+	resLabel := "success"
+	if err != nil {
+		resLabel = "error"
+		metrics.ObserveMCPError(p.tenantID, toolName)
+	}
+	metrics.ObserveToolCall(p.tenantID, toolName, resLabel)
 }
 
 func errString(err error) string {

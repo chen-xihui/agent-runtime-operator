@@ -6,6 +6,7 @@ import (
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
 	"github.com/example/agent-runtime-operator/internal/eventbus"
+	"github.com/example/agent-runtime-operator/internal/metrics"
 	"github.com/example/agent-runtime-operator/internal/orchestrator"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -48,6 +49,9 @@ func (p *NodeEventProcessor) OnEvent(ctx context.Context, evt *eventbus.CloudEve
 	if !ok {
 		return nil
 	}
+
+	// 可观测性指标（M5）
+	metrics.ObserveEvent(evt.TenantID, evt.Type)
 
 	// 根据事件类型确定节点结果
 	nodeState, _ := nodeStateFromType(evt.Type)
