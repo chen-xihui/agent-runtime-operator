@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	"github.com/example/agent-runtime-operator/internal/eventbus"
 	"github.com/example/agent-runtime-operator/internal/orchestrator"
 )
 
@@ -25,6 +26,16 @@ type WorkflowRunReconciler struct {
 	Parser   orchestrator.Parser
 	Compiler orchestrator.Compiler
 	Engine   orchestrator.DAGEngine
+	// NodeEvents 节点事件处理器（幂等推进 WorkflowRun 状态，P1-3）
+	NodeEvents *NodeEventProcessor
+}
+
+// EventHandler 返回节点事件处理函数（供事件总线订阅接入）
+func (r *WorkflowRunReconciler) EventHandler() func(ctx context.Context, evt *eventbus.CloudEvent) error {
+	if r.NodeEvents == nil {
+		return func(ctx context.Context, evt *eventbus.CloudEvent) error { return nil }
+	}
+	return r.NodeEvents.OnEvent
 }
 
 // +kubebuilder:rbac:groups=agent.runtime.io,resources=workflowruns,verbs=get;list;watch;create;update;patch;delete

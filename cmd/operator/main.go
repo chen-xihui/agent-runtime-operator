@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 
@@ -15,6 +16,7 @@ import (
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
 	"github.com/example/agent-runtime-operator/internal/a2a"
 	"github.com/example/agent-runtime-operator/internal/controllers"
+	"github.com/example/agent-runtime-operator/internal/eventbus"
 	"github.com/example/agent-runtime-operator/internal/mcp"
 	"github.com/example/agent-runtime-operator/internal/orchestrator"
 	"github.com/example/agent-runtime-operator/internal/registration"
@@ -53,6 +55,8 @@ func main() {
 	var temporalTaskQueue string
 	flag.StringVar(&temporalAddr, "temporal-address", "", "Temporal server address (e.g. 127.0.0.1:7233). Enables orchestration.")
 	flag.StringVar(&temporalTaskQueue, "temporal-task-queue", "agent-orchestration", "Temporal task queue.")
+	var natsURL string
+	flag.StringVar(&natsURL, "nats-url", "", "NATS server URL (e.g. nats://127.0.0.1:4222). Enables event-driven orchestration.")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -125,15 +129,33 @@ func main() {
 		}
 		engine := orchestrator.NewTemporalEngine(tClient, temporalTaskQueue)
 
+		// 节点事件处理器（幂等推进 WorkflowRun 状态，P1-3）
+		nodeEvents := controllers.NewNodeEventProcessor(mgr.GetClient())
+
 		if err = (&controllers.WorkflowRunReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Parser:   parser,
-			Compiler: compiler,
-			Engine:   engine,
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Parser:     parser,
+			Compiler:   compiler,
+			Engine:     engine,
+			NodeEvents: nodeEvents,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "WorkflowRun")
 			os.Exit(1)
+		}
+
+		// 事件驱动推进：订阅 NATS 事件总线（若配置），转发给节点事件处理器
+		if natsURL != "" {
+			natsBus, err := eventbus.NewNatsBus(eventbus.NatsConfig{URL: natsURL, SubjectPrefix: "agent-runtime"})
+			if err != nil {
+				setupLog.Error(err, "unable to connect nats", "url", natsURL)
+				os.Exit(1)
+			}
+			if _, err := natsBus.Subscribe(context.Background(), "", "agent.>", nodeEvents.OnEvent); err != nil {
+				setupLog.Error(err, "unable to subscribe node events")
+				os.Exit(1)
+			}
+			setupLog.Info("event-driven orchestration enabled", "nats", natsURL)
 		}
 		setupLog.Info("workflowrun controller enabled", "temporal", temporalAddr)
 	} else {

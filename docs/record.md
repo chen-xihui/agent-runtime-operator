@@ -161,8 +161,19 @@ WorkflowRun 控制器 ✅
 - 单元测试（fake client + status subresource + mock engine）：
   StartSuccess / WorkflowNotFound / CompileError（环）/ ExecuteError / Cancel ✅
 
+事件驱动节点推进 ✅
+
+已实现（internal/controllers/workflowrun_events.go）
+- NodeEventProcessor：订阅 NATS 事件总线，处理节点结果事件
+  - 幂等去重（P1-3）：seenEvents 记录已处理事件 ID，at-least-once 不重复推进
+  - subject 约定 <runID>/<nodeID> 解析节点
+  - 更新 status.nodeResults / currentNode / eventsCount
+  - 完成判定：有 FAILED 节点 → FAILED；全 SUCCEEDED → SUCCEEDED
+- main.go：--nats-url flag 订阅事件总线转发给 NodeEventProcessor（与 WorkflowRun 控制器联动）
+- 单元测试：Progress（状态推进+完成判定）/ Idempotency（去重）/ Failure（FAILED）/ UnknownRunID / ParseNodeSubject ✅
+
 待办（M3 收尾 / M4）
-- 事件驱动节点推进（Temporal Signal 连接 OnEvent）
+- Temporal 通用编排 Workflow 定义（GenericOrchestratorWorkflow 实现）
 - 重试/补偿策略执行、Human-in-the-loop（approval 节点）
 - Firecracker 强隔离（M4）
 
