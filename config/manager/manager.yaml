@@ -7,7 +7,10 @@ metadata:
   labels:
     control-plane: agent-runtime-operator
 spec:
-  replicas: 1
+  # M5 高可用：多副本 + LeaderElection（仅 leader 调谐，其余 standby）
+  replicas: 2
+  strategy:
+    type: RollingUpdate
   selector:
     matchLabels:
       control-plane: agent-runtime-operator
@@ -17,6 +20,15 @@ spec:
         control-plane: agent-runtime-operator
     spec:
       serviceAccountName: agent-runtime-operator
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    control-plane: agent-runtime-operator
+                topologyKey: kubernetes.io/hostname
       securityContext:
         runAsNonRoot: true
         seccompProfile:

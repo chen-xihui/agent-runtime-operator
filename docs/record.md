@@ -247,11 +247,25 @@ M5 生产化（可观测性）🔄
 - 单元测试：metrics Observe/Values、telemetry trace 生成/解析/子 span、logging RedactMap/RedactString/IsSensitiveKey ✅
 - 全部 12 包 build / vet / test 通过 ✅
 
-待办（M5 收尾）
-- 高可用（多副本/沙箱跨节点）
-- 多集群联邦（FederationPolicy、跨集群 Agent 路由）
+M5 高可用 + 多集群联邦 ✅
+
+已实现
+- 高可用（config/manager/manager.yaml）
+  - replicas=2 + RollingUpdate
+  - Pod 反亲和（preferredAntiAffinity，hostname 拓扑）
+  - LeaderElection（仅 leader 调谐，其余 standby，已有 --leader-elect + LeaderElectionID）
+- 多集群联邦（internal/federation/federator.go）
+  - Cluster 描述（hub/spoke/standalone 角色、endpoint、TrustedFrom）
+  - Router：注册/注销/List、Allowed（双向信任校验 D-4）、Route（跨集群转发）、Lookup（联邦发现）
+  - IsValidClusterName（集群名校验，防注入）
+  - WithRouteFn 可注入跨集群转发实现（可测）
+- 单元测试：Register/List、Allowed TrustedFrom（D-4）、Route（允许/禁止/未配置）、Lookup、IsValidClusterName ✅
+- 全部 13 包 build / vet / test 通过 ✅
+
+待办（M5 收尾 / 后续）
 - 开放 SDK 与插件市场
 - Firecracker 实际 KVM 运行时接入、审计收集到外部存储
+- 联邦接入 A2A Gateway（跨集群 Agent 委派端到端）
 
 
 

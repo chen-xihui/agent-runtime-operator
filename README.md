@@ -46,6 +46,8 @@
 - **Metrics**（`internal/metrics/metrics.go`）：编排运行/耗时/事件、沙箱状态迁移/活跃数、工具调用/错误率，接入 controller-runtime `/metrics` 端点（Prometheus）
 - **全链路追踪**（`internal/telemetry/trace.go`）：W3C Trace Context（traceparent）生成/解析/子 span 派生，经 eventbus 跨编排引擎/Agent 透传
 - **结构化日志**（`internal/telemetry/logging.go`）：租户/Agent 维度索引 + 敏感字段脱敏（token/secret/password/credential）
+- **高可用**（`config/manager/manager.yaml`）：多副本（replicas=2）+ LeaderElection（仅 leader 调谐）+ Pod 反亲和
+- **多集群联邦**（`internal/federation/federator.go`）：FederationPolicy 跨集群信任（D-4 双向信任）、跨集群 Agent 路由/发现
 
 核心能力：
 
@@ -107,6 +109,7 @@ agent-runtime-operator/
 │   ├── audit/            # DLP 审计存储（工具调用/出网审计）
 │   ├── metrics/          # 可观测性指标（Prometheus）
 │   ├── telemetry/        # 全链路追踪（W3C traceparent）+ 日志脱敏
+│   ├── federation/       # 多集群联邦（跨集群信任/路由）
 │   ├── runtime/          # RuntimeAdapter（gVisor/Firecracker，Suspend/Resume 快照）
 │   ├── relay/            # Event Relay 本地 socket 服务（P0-2）
 │   ├── orchestrator/     # 编排引擎（DSL Parser / CEL / Compiler / Temporal DAG）
@@ -134,7 +137,7 @@ agent-runtime-operator/
 | M2 | 协议层 | ✅ MCP Registry/Proxy、A2A Gateway、NATS 事件总线、Agent↔Registry/Gateway 控制器联动、MCP 工具调用端到端（真实 Tool Server 验证） |
 | M3 | 编排引擎 | ✅ DSL 解析、CEL 条件、Temporal 委托、WorkflowRun 控制器、事件驱动节点推进、Temporal 通用编排 Workflow（数据驱动 DAG + 重试/补偿）、Human-in-the-loop（approval 节点） |
 | M4 | 强隔离 | ✅ RuntimeAdapter（Firecracker 快照 Suspend/Resume）、Sandbox Suspend/Resume 运维、租户默认 NetworkPolicy Deny-All、DLP 审计存储；待：Firecracker 实际 KVM 运行时接入、审计收集到外部存储 |
-| M5 | 生产化 | 🔄 Metrics（Prometheus）、全链路追踪（W3C）、结构化日志已实现；待：高可用、多集群联邦、开放 SDK |
+| M5 | 生产化 | 🔄 Metrics、全链路追踪、结构化日志、高可用（多副本+LeaderElection）、多集群联邦已实现；待：开放 SDK 与插件市场 |
 
 ## 关键技术选型
 
