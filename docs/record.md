@@ -131,8 +131,30 @@ MCP 工具调用端到端 ✅
   验证：注册→鉴权→数据过滤注入→MCP 协议转发→脱敏→审计 完整链路 ✅
 - TestE2E_MCPServer_Echo：stdio 传输握手 + tools/call ✅
 
-待办（M3）
-- 编排引擎（DSL 解析 / DAG / Temporal 委托）— M3
+M3 编排引擎（核心实现）🔄
+
+已实现（internal/orchestrator）
+- DSL Parser（parser.go）：WorkflowSpec→Graph（DAG）
+  - 环检测（Kahn 拓扑排序）、缺失依赖、重复节点、入口校验
+  - 节点 timeout（Go duration）、RetrySpec 解析
+- CEL 条件求值器（cel.go）：R-2 条件表达式
+  - 编译期静态校验（非法表达式提交即报错）
+  - 运行时求值，绑定 nodes.<id>.result / input / env
+- Compiler（compiler.go）：Graph→ExecutionData
+  - C1 RetrySpec.backoff 校验（none|fixed|exponential，fixed/exp 需 max>=1）
+- DAG 引擎（engine.go）：Temporal 委托
+  - GenericOrchestratorWorkflow 数据驱动执行（ADR-02/P0-1，不自研调度器）
+  - Execute（数据校验→启动 Workflow）/ Cancel / OnEvent（幂等推进占位）
+
+验证
+- 单元测试：Parser（Valid/重复/缺失依赖/环/入口/timeout）、Compiler（Compile/backoff）、CEL（Compile/Eval/input/非bool）、Engine（nil client/空数据/接口）✅
+- 全部 build / vet / test 通过 ✅
+
+待办（M3 收尾 / M4）
+- 事件驱动节点推进（Temporal Signal 连接 OnEvent）
+- WorkflowRun 控制器（创建时 Compile+Execute，事件推进状态）
+- 重试/补偿策略执行、Human-in-the-loop（approval 节点）
+- Firecracker 强隔离（M4）
 
 
 

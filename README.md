@@ -23,6 +23,13 @@
 - **Agent↔Registry/Gateway 控制器联动**（`internal/registration`）：Agent Running 时自动读取 `ToolBinding`/`MCPEndpoint` CRD 注入工具授权（R-4），并注册 AgentCard 到 A2A Gateway
 - **MCP 工具调用端到端**（`internal/mcp/{client,invoker,transport_*}.go`）：MCP Client 转发器（stdio + streamable HTTP 传输），MCP Proxy 经 `MCPInvoker` 转发到真实 Tool Server；已用真实 MCP Server 端到端验证完整调用链（鉴权→数据过滤→转发→脱敏→审计）
 
+**M3 编排引擎（核心已实现，单元测试通过）**：
+
+- **DSL Parser**（`internal/orchestrator/parser.go`）：`WorkflowSpec`→`Graph`（DAG），含环检测（Kahn 拓扑排序）、缺失依赖、入口校验
+- **CEL 条件求值器**（`internal/orchestrator/cel.go`）：条件表达式（R-2），编译期静态校验 + 运行时求值，绑定 `nodes`/`input`/`env`
+- **Compiler**（`internal/orchestrator/compiler.go`）：Graph→ExecutionData，RetrySpec 退避校验（C1）
+- **DAG 引擎**（`internal/orchestrator/engine.go`）：委托 Temporal `GenericOrchestratorWorkflow` 数据驱动执行（ADR-02/P0-1，不自研调度器）
+
 核心能力：
 
 - **CRD 类型**（`api/v1`）：`Tenant` / `Agent` / `Sandbox` / `Workflow` / `WorkflowRun` / `ToolBinding` / `MCPEndpoint`
@@ -81,7 +88,7 @@ agent-runtime-operator/
 │   ├── controllers/      # Reconciler（Tenant/Agent/Sandbox）
 │   ├── sandbox/          # 沙箱 Pod 构建与生命周期
 │   ├── relay/            # Event Relay 本地 socket 服务（P0-2）
-│   ├── orchestrator/     # 编排引擎接口（DSL → DAG → Temporal）
+│   ├── orchestrator/     # 编排引擎（DSL Parser / CEL / Compiler / Temporal DAG）
 │   ├── eventbus/         # 事件总线（NATS JetStream 实现）
 │   ├── mcp/              # MCP Registry / Proxy / Client（stdio+HTTP）
 │   ├── a2a/              # A2A Gateway
@@ -104,7 +111,7 @@ agent-runtime-operator/
 |------|--------|--------|
 | M1 | 基础底座 | ✅ M1-a 普通 Pod；✅ M1-b gVisor RuntimeClass + Event Relay Sidecar（本地 socket 通路，S2 前置）；✅ 真实集群端到端验证 |
 | M2 | 协议层 | ✅ MCP Registry/Proxy、A2A Gateway、NATS 事件总线、Agent↔Registry/Gateway 控制器联动、MCP 工具调用端到端（真实 Tool Server 验证） |
-| M3 | 编排引擎 | DSL 解析、DAG 执行、事件驱动、重试/补偿、Human-in-the-loop |
+| M3 | 编排引擎 | 🔄 DSL 解析（Parser/Compiler）、CEL 条件、Temporal 委托 DAG 引擎已实现；待：事件驱动节点推进、重试/补偿策略执行、Human-in-the-loop、WorkflowRun 控制器 |
 | M4 | 强隔离 | Firecracker 接入、快照 Suspend/Resume、租户安全加固、审计 |
 | M5 | 生产化 | 高可用、可观测、多集群联邦、SDK 与插件市场 |
 
