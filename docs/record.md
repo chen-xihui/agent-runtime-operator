@@ -200,8 +200,26 @@ Human-in-the-loop（approval 节点）✅
   - 拒绝时非 Always 节点 → 整个运行失败
 - 单元测试（Temporal testsuite）：ApprovalApproved（通过后 DAG 继续）/ ApprovalRejected（拒绝致失败）✅
 
-待办（M4）
-- Firecracker 强隔离（快照 Suspend/Resume、租户安全加固、审计）
+M4 强隔离（核心实现）🔄
+
+已实现
+- RuntimeAdapter（internal/runtime/adapter.go）
+  - Runtime 接口：Name / Suspend / Resume
+  - gVisor（降级无操作，SnapshotSupported=false）、Firecracker（SuspendCapable，SnapshotSupported=true）
+  - Registry：按 RuntimeClass 选择适配器，未知运行时兜底 gVisor
+- Sandbox Suspend/Resume 运维（internal/controllers/sandbox_controller.go）
+  - SandboxSpec.Suspend *bool 运维意图（+CRD/deepcopy）
+  - Running→Suspended（Suspend）与 Suspended→Running（Resume）状态机迁移
+- 租户安全加固（internal/controllers/tenant_controller.go）
+  - 租户创建默认 NetworkPolicy Deny-All（Ingress+Egress，PodSelector 全选）
+  - RBAC 增加 networkpolicies 权限
+- 单元测试：Registry 选择 / 适配器 SuspendResume / 未知运行时 / Sandbox SuspendResume / NetworkPolicy 构建 / wantSuspend ✅
+- 全部 9 包 build / vet / test 通过 ✅
+
+待办（M4 收尾 / M5）
+- Firecracker 实际运行时接入（KVM 节点、快照工具集成）
+- DLP 审计收集（MCP Proxy 审计落库 / 事件流）
+- M5 生产化（高可用、可观测、多集群联邦、SDK）
 
 
 

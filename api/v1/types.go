@@ -125,6 +125,8 @@ type SandboxSpec struct {
 	EnableRelay  bool          `json:"enableRelay,omitempty"`
 	// RunAsNonRoot 是否以非 root 运行（来自 Agent.spec.security.runAsNonRoot，默认 true）
 	RunAsNonRoot *bool         `json:"runAsNonRoot,omitempty"`
+	// Suspend 期望挂起（M4：Firecracker 快照 Suspend/Resume；nil/false 表示运行）
+	Suspend *bool `json:"suspend,omitempty"`
 }
 
 // SandboxStatus 沙箱实际状态

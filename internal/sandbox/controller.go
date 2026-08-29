@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	runtimepkg "github.com/example/agent-runtime-operator/internal/runtime"
 )
 
 // Config 沙箱控制器的可调参数
@@ -23,17 +24,28 @@ type Config struct {
 	RelayImage   string // Event Relay Sidecar 镜像
 }
 
-// Controller 负责沙箱 Pod 的创建与回收
+// Controller 负责沙箱 Pod 的创建与回收，以及 Suspend/Resume 运维（M4）
 type Controller struct {
 	client   client.Client
 	scheme   *runtime.Scheme
 	recorder record.EventRecorder
 	cfg      *Config
+	runtimes *runtimepkg.Registry // 运行时适配器注册表（按 RuntimeClass 挂起/恢复）
 }
 
 // NewController 创建沙箱控制器
 func NewController(c client.Client, s *runtime.Scheme, cfg *Config) *Controller {
-	return &Controller{client: c, scheme: s, cfg: cfg}
+	return &Controller{client: c, scheme: s, cfg: cfg, runtimes: runtimepkg.NewRegistry()}
+}
+
+// Suspend 挂起沙箱（Firecracker 快照 Suspend；gVisor/普通 Pod 降级）
+func (c *Controller) Suspend(ctx context.Context, sb *agentv1.Sandbox) error {
+	return c.runtimes.Get(sb.Spec.RuntimeClass).Suspend(ctx, sb)
+}
+
+// Resume 恢复沙箱（Firecracker 快照 Resume；gVisor/普通 Pod 降级）
+func (c *Controller) Resume(ctx context.Context, sb *agentv1.Sandbox) error {
+	return c.runtimes.Get(sb.Spec.RuntimeClass).Resume(ctx, sb)
 }
 
 // PodState 表示沙箱 Pod 的就绪状态

@@ -4,8 +4,10 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,6 +26,7 @@ type TenantReconciler struct {
 // +kubebuilder:rbac:groups=agent.runtime.io,resources=tenants/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile 调谐逻辑
 func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -67,8 +70,29 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
+	// 创建默认 NetworkPolicy（默认 Deny-All，M4 租户安全加固 / design-doc 4.1.5）
+	// 之后按需放行（Agent 沙箱经 Event Relay 唯一安全出口）。
+	if err := r.Create(ctx, buildDefaultDenyNetworkPolicy(tenant.Name)); err != nil && !apierrors.IsAlreadyExists(err) {
+		return ctrl.Result{}, err
+	}
+
 	r.updateStatus(tenant)
 	return ctrl.Result{}, nil
+}
+
+// buildDefaultDenyNetworkPolicy 构建租户默认 Deny-All 网络策略
+func buildDefaultDenyNetworkPolicy(namespace string) *networkingv1.NetworkPolicy {
+	policyTypes := []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress}
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tenant-default-deny",
+			Namespace: namespace,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: policyTypes,
+		},
+	}
 }
 
 func buildResourceQuota(tenant *agentv1.Tenant) *corev1.ResourceQuota {

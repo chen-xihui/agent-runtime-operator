@@ -456,6 +456,11 @@ func (in *SandboxSpec) DeepCopyInto(out *SandboxSpec) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.Suspend != nil {
+		in, out := &in.Suspend, &out.Suspend
+		*out = new(bool)
+		**out = **in
+	}
 }
 
 // DeepCopy returns a deep copy of the receiver.

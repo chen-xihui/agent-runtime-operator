@@ -40,6 +40,24 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	tenantNS := req.Namespace
 
+	// M4：Suspend/Resume 运维（Firecracker 快照 Suspend/Resume，gVisor/普通 Pod 降级）
+	if wantSuspend(sb.Spec.Suspend) && sb.Status.Phase == agentv1.PhaseRunning {
+		logger.Info("suspending sandbox", "sandbox", sb.Name, "runtime", sb.Status.RuntimeClass)
+		if err := r.Sandbox.Suspend(ctx, sb); err != nil {
+			return ctrl.Result{}, err
+		}
+		r.setPhase(sb, agentv1.PhaseSuspended, "suspended by request")
+		return ctrl.Result{}, nil
+	}
+	if !wantSuspend(sb.Spec.Suspend) && sb.Status.Phase == agentv1.PhaseSuspended {
+		logger.Info("resuming sandbox", "sandbox", sb.Name)
+		if err := r.Sandbox.Resume(ctx, sb); err != nil {
+			return ctrl.Result{}, err
+		}
+		r.setPhase(sb, agentv1.PhaseRunning, "resumed by request")
+		return ctrl.Result{}, nil
+	}
+
 	switch sb.Status.Phase {
 	case agentv1.PhaseTerminated:
 		// 已终止，确保 Pod 已清理
@@ -118,6 +136,11 @@ func (r *SandboxReconciler) setRelayReady(sb *agentv1.Sandbox, ready bool) {
 	}
 	sb.Status.RelayReady = ready
 	_ = r.Status().Update(context.Background(), sb)
+}
+
+// wantSuspend 判断沙箱是否期望挂起（spec.suspend 为 true）
+func wantSuspend(suspend *bool) bool {
+	return suspend != nil && *suspend
 }
 
 // SetupWithManager 注册控制器

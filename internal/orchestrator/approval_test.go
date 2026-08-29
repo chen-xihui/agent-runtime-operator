@@ -87,12 +87,14 @@ func TestGenericOrchestratorWorkflow_ApprovalRejected(t *testing.T) {
 }
 
 func TestApprovalNode_ResultMapping(t *testing.T) {
-	// 验证 runApprovalNode 的结果映射（通过）
-	res := ApprovalResult{NodeID: "approve", Decision: ApprovalApproved, Approver: "alice"}
-	if res.Decision != ApprovalApproved {
-		t.Fatalf("decision = %q", res.Decision)
+	// 验证审批结果常量
+	if ApprovalApproved != "APPROVED" {
+		t.Fatalf("approved const = %q", ApprovalApproved)
 	}
 	if ApprovalRejected != "REJECTED" {
 		t.Fatalf("rejected const = %q", ApprovalRejected)
+	}
+	if NodeKindApproval != "approval" {
+		t.Fatalf("kind const = %q", NodeKindApproval)
 	}
 }

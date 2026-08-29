@@ -93,7 +93,7 @@ func GenericOrchestratorWorkflow(ctx workflow.Context, data *ExecutionData, inpu
 
 		// Human-in-the-loop：Approval 节点暂停等待人工审批（design-doc 4.2.5）
 		if node.Kind == NodeKindApproval {
-			approvalRes, err := runApprovalNode(ctx, node, cur, input)
+			approvalRes, err := runApprovalNode(ctx, node, cur)
 			if err != nil {
 				return err
 			}
@@ -214,7 +214,7 @@ func fanOut(done string, dependents map[string][]string, pendingDeps map[string]
 
 // runApprovalNode 执行 Approval 节点：派发审批请求（AGENT_ASK_HUMAN）并等待人工审批结果。
 // 确定性约束（R-1）：审批通知经 Activity（I/O 收敛），审批结果经 Signal 确定性等待。
-func runApprovalNode(ctx workflow.Context, node *Node, nodeID string, input map[string]interface{}) (NodeResult, error) {
+func runApprovalNode(ctx workflow.Context, node *Node, nodeID string) (NodeResult, error) {
 	// 1. 派发审批请求（Activity：触发 AGENT_ASK_HUMAN，通知外部工单系统）
 	req := ApprovalRequest{
 		RunID:  workflow.GetInfo(ctx).WorkflowExecution.ID,
