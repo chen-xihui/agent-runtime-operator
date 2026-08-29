@@ -16,8 +16,10 @@ import (
 	"github.com/example/agent-runtime-operator/internal/a2a"
 	"github.com/example/agent-runtime-operator/internal/controllers"
 	"github.com/example/agent-runtime-operator/internal/mcp"
+	"github.com/example/agent-runtime-operator/internal/orchestrator"
 	"github.com/example/agent-runtime-operator/internal/registration"
 	"github.com/example/agent-runtime-operator/internal/sandbox"
+	"go.temporal.io/sdk/client"
 )
 
 var (
@@ -47,6 +49,10 @@ func main() {
 	flag.BoolVar(&enableRelay, "enable-relay", false, "Inject Event Relay sidecar into sandbox (M1-b).")
 	flag.StringVar(&relayImage, "relay-image", "registry.internal/agent-runtime/event-relay:latest",
 		"Event Relay sidecar image (M1-b).")
+	var temporalAddr string
+	var temporalTaskQueue string
+	flag.StringVar(&temporalAddr, "temporal-address", "", "Temporal server address (e.g. 127.0.0.1:7233). Enables orchestration.")
+	flag.StringVar(&temporalTaskQueue, "temporal-task-queue", "agent-orchestration", "Temporal task queue.")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -105,6 +111,33 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Agent")
 		os.Exit(1)
+	}
+
+	// M3 编排：WorkflowRun 控制器（依赖 Temporal，可选注册）
+	if temporalAddr != "" {
+		parser := orchestrator.NewDefaultParser()
+		compiler := orchestrator.NewDefaultCompiler(parser)
+
+		tClient, err := client.Dial(client.Options{HostPort: temporalAddr})
+		if err != nil {
+			setupLog.Error(err, "unable to dial temporal", "address", temporalAddr)
+			os.Exit(1)
+		}
+		engine := orchestrator.NewTemporalEngine(tClient, temporalTaskQueue)
+
+		if err = (&controllers.WorkflowRunReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Parser:   parser,
+			Compiler: compiler,
+			Engine:   engine,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "WorkflowRun")
+			os.Exit(1)
+		}
+		setupLog.Info("workflowrun controller enabled", "temporal", temporalAddr)
+	} else {
+		setupLog.Info("workflowrun controller disabled (--temporal-address not set)")
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

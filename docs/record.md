@@ -150,9 +150,19 @@ M3 编排引擎（核心实现）🔄
 - 单元测试：Parser（Valid/重复/缺失依赖/环/入口/timeout）、Compiler（Compile/backoff）、CEL（Compile/Eval/input/非bool）、Engine（nil client/空数据/接口）✅
 - 全部 build / vet / test 通过 ✅
 
+WorkflowRun 控制器 ✅
+
+已实现（internal/controllers/workflowrun_controller.go）
+- 创建时：解析引用的 Workflow CR → Parser 解析+校验 → Compiler 编译 → Temporal 引擎 Execute → 回写 runID/phase（R-5）
+- 状态回写（R-5 只读低频快照）：RUNNING/SUCCEEDED/FAILED/CANCELLED + runID/currentNode/error
+- 取消：标记 CANCELLED 或 DeletionTimestamp 时调用引擎 Cancel
+- 依赖注入：Parser/Compiler/DAGEngine（可测试）
+- main.go：--temporal-address flag 可选注册（无 Temporal 时禁用 WorkflowRun 控制器）
+- 单元测试（fake client + status subresource + mock engine）：
+  StartSuccess / WorkflowNotFound / CompileError（环）/ ExecuteError / Cancel ✅
+
 待办（M3 收尾 / M4）
 - 事件驱动节点推进（Temporal Signal 连接 OnEvent）
-- WorkflowRun 控制器（创建时 Compile+Execute，事件推进状态）
 - 重试/补偿策略执行、Human-in-the-loop（approval 节点）
 - Firecracker 强隔离（M4）
 
