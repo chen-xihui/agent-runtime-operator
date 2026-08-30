@@ -352,4 +352,19 @@ M3 编排 NATS+Temporal 集群端到端验证（虚拟机 192.168.0.31）🔄
 - 注：事件推进依赖 operator 的 NodeEventProcessor 订阅 NATS 并回写 status（R-5 快照）
 
 
+插件市场（M5 收尾）✅
+
+已实现（internal/plugin/）
+- Registry（registry.go）：插件注册中心
+  - Install（语义化版本管理，同版本冲突/降级拒绝）、Uninstall、Enable/Disable、Get
+  - List（类型过滤）/ Discover（标签+类型发现）
+  - Call（仅 enabled 状态可调用）、Versions（版本历史）
+  - 插件类型：tool/skill/hook/visual
+- AgentPlugins（store.go）：Agent 插件扩展
+  - Mount/Unmount（幂等）、Installed、ListEnabled、HasPlugin、Call
+  - 按 Agent 挂载插件，获得对应能力扩展
+- 单元测试：InstallAndGet / VersionUpgrade（升级/降级）/ EnableDisableCall / DiscoverAndList / AgentPlugins MountAndCall / CompareVersions ✅
+- 全部 15 包 build / vet / test 通过 ✅
+
+
 

@@ -51,6 +51,7 @@
 - **高可用**（`config/manager/manager.yaml`）：多副本（replicas=2）+ LeaderElection（仅 leader 调谐）+ Pod 反亲和
 - **多集群联邦**（`internal/federation/federator.go`）：FederationPolicy 跨集群信任（D-4 双向信任）、跨集群 Agent 路由/发现，**已接入 A2A Gateway**（本地无 Agent 时跨集群委派）
 - **开放 SDK**（`sdk/client.go`）：Tenant/Agent/Sandbox/Workflow 管理 API（创建租户、管理沙箱 Suspend/Resume、触发工作流运行）
+- **插件市场**（`internal/plugin/`）：插件注册中心（安装/卸载/启停/版本管理/发现）+ Agent 插件扩展（按 Agent 挂载插件能力）
 
 核心能力：
 
@@ -119,7 +120,8 @@ agent-runtime-operator/
 │   ├── eventbus/         # 事件总线（NATS JetStream 实现）
 │   ├── mcp/              # MCP Registry / Proxy / Client（stdio+HTTP）
 │   ├── a2a/              # A2A Gateway（含跨集群联邦委派）
-│   └── registration/     # Agent↔Registry/Gateway 控制器联动
+│   ├── registration/     # Agent↔Registry/Gateway 控制器联动
+│   └── plugin/           # 插件市场（注册中心 + Agent 插件扩展）
 ├── sdk/                   # 开放 SDK（平台管理 API）
 ├── config/
 │   ├── crd/              # CRD manifests
@@ -141,7 +143,7 @@ agent-runtime-operator/
 | M2 | 协议层 | ✅ MCP Registry/Proxy、A2A Gateway、NATS 事件总线、Agent↔Registry/Gateway 控制器联动、MCP 工具调用端到端（真实 Tool Server 验证） |
 | M3 | 编排引擎 | ✅ DSL 解析、CEL 条件、Temporal 委托、WorkflowRun 控制器、事件驱动节点推进、Temporal 通用编排 Workflow（数据驱动 DAG + 重试/补偿）、Human-in-the-loop（approval 节点） |
 | M4 | 强隔离 | ✅ RuntimeAdapter（Firecracker 快照 Suspend/Resume）、Sandbox Suspend/Resume 运维、租户默认 NetworkPolicy Deny-All、DLP 审计存储；待：Firecracker 实际 KVM 运行时接入、审计收集到外部存储 |
-| M5 | 生产化 | ✅ Metrics、全链路追踪、结构化日志、高可用、多集群联邦（含 A2A 接入）、开放 SDK；待：插件市场 |
+| M5 | 生产化 | ✅ Metrics、全链路追踪、结构化日志、高可用、多集群联邦（含 A2A 接入）、开放 SDK、插件市场 |
 
 ## 关键技术选型
 
