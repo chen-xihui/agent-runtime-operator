@@ -409,4 +409,19 @@ REST API Server ✅
 - 全部 16 包 build / vet / test 通过 ✅
 
 
+DLP 审计收集到外部存储 + 查询 ✅
+
+已实现
+- 审计查询 REST 接口（internal/apiserver/server.go）
+  - GET /api/v1/audit?tenant=&agent=&action=&resource=&limit=（过滤 + Limit）
+  - Server.WithAuditStore 注入审计存储（默认 NoopStore）
+- NATS JetStream 审计存储（internal/audit/nats_store.go）
+  - NewNatsStore：连接 NATS + 创建 audit-events 持久化 stream（FileStorage）
+  - Write：审计记录发布到 JetStream（subject: audit.<tenant>.<action>）
+  - Query：从 stream 拉取并按 Filter 过滤
+  - 可替换 MemoryStore（进程内）与 NatsStore（持久化）
+- 单元测试：API QueryAudit（租户/agent 过滤 + limit）、audit NatsStore 集成（本机 nats:2.10 实测）✅
+- 全部 16 包 build / vet / test 通过 ✅
+
+
 

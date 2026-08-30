@@ -7,12 +7,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/example/agent-runtime-operator/api/v1"
+	"github.com/example/agent-runtime-operator/internal/audit"
 	"github.com/example/agent-runtime-operator/sdk"
 )
 
@@ -139,5 +141,49 @@ func TestServer_BadRequest(t *testing.T) {
 	resp, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants", `invalid-json`)
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid body status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestServer_QueryAudit(t *testing.T) {
+	// 构造带审计存储的 server
+	store := audit.NewMemoryStore()
+	store.Write(context.Background(), &audit.Record{
+		TenantID: "tenant-a", AgentID: "reviewer", Action: audit.ActionToolCall, Resource: "db.query",
+		Success: true, Timestamp: time.Now(),
+	})
+	store.Write(context.Background(), &audit.Record{
+		TenantID: "tenant-a", AgentID: "other", Action: audit.ActionToolCall, Resource: "code.search",
+		Success: true, Timestamp: time.Now(),
+	})
+
+	scheme := runtime.NewScheme()
+	_ = v1.AddToScheme(scheme)
+	b := fake.NewClientBuilder().WithScheme(scheme).Build()
+	s := New(sdk.NewFromClient(b)).WithAuditStore(store)
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	// 按租户查询
+	resp, out := doReq(t, "GET", ts.URL+"/api/v1/audit?tenant=tenant-a", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("query audit status = %d", resp.StatusCode)
+	}
+	records, ok := out["records"].([]interface{})
+	if !ok || len(records) != 2 {
+		t.Fatalf("audit records = %v, want 2", records)
+	}
+
+	// 按 agent 过滤
+	resp, out = doReq(t, "GET", ts.URL+"/api/v1/audit?tenant=tenant-a&agent=reviewer", "")
+	records, _ = out["records"].([]interface{})
+	if len(records) != 1 {
+		t.Fatalf("filtered records = %d, want 1", len(records))
+	}
+
+	// limit
+	resp, out = doReq(t, "GET", ts.URL+"/api/v1/audit?tenant=tenant-a&limit=1", "")
+	records, _ = out["records"].([]interface{})
+	if len(records) != 1 {
+		t.Fatalf("limited records = %d, want 1", len(records))
 	}
 }

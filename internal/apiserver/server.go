@@ -5,21 +5,32 @@ package apiserver
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/example/agent-runtime-operator/api/v1"
+	"github.com/example/agent-runtime-operator/internal/audit"
 	"github.com/example/agent-runtime-operator/sdk"
 )
 
 // Server REST API 服务器
 type Server struct {
-	sdk *sdk.Client
+	sdk   *sdk.Client
+	audit audit.Store
 }
 
 // New 创建 API Server
 func New(c *sdk.Client) *Server {
-	return &Server{sdk: c}
+	return &Server{sdk: c, audit: audit.NoopStore{}}
+}
+
+// WithAuditStore 设置审计存储（DLP 审计查询，P1-1）
+func (s *Server) WithAuditStore(st audit.Store) *Server {
+	if st != nil {
+		s.audit = st
+	}
+	return s
 }
 
 // Handler 返回 HTTP 处理器（Go 1.22 method+path 路由）
@@ -43,6 +54,9 @@ func (s *Server) Handler() http.Handler {
 	// Workflow
 	mux.HandleFunc("POST /api/v1/tenants/{tenant}/workflows", s.createWorkflow)
 	mux.HandleFunc("GET /api/v1/tenants/{tenant}/workflowruns/{name}", s.getWorkflowRun)
+
+	// Audit（DLP 审计查询）
+	mux.HandleFunc("GET /api/v1/audit", s.queryAudit)
 
 	// 健康检查
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +192,34 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, run)
+}
+
+// ===================== Audit =====================
+
+// queryAudit 查询 DLP 审计记录（按租户/Agent/动作/资源过滤）
+// GET /api/v1/audit?tenant=tenant-a&agent=reviewer&action=tool_call&resource=db.query&limit=50
+func (s *Server) queryAudit(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	filter := audit.Filter{
+		TenantID: q.Get("tenant"),
+		AgentID:  q.Get("agent"),
+		Action:   q.Get("action"),
+		Resource: q.Get("resource"),
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			filter.Limit = n
+		}
+	}
+	records, err := s.audit.Query(r.Context(), filter)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if records == nil {
+		records = []*audit.Record{}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"records": records})
 }
 
 // ===================== 辅助 =====================
