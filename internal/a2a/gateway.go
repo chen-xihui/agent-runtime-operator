@@ -24,6 +24,7 @@ type registration struct {
 
 // MemoryGateway 基于内存的 A2A 注册中心与消息路由
 // 通道分工（D-2）：Agent 之间协作走 A2A；跨租户默认禁止（D-4）。
+// 跨集群（M5 联邦）：本地无目标 Agent 时，经联邦路由器跨集群委派（D-4 双向信任）。
 type MemoryGateway struct {
 	mu    sync.RWMutex
 	regs  map[string]registration // agentID -> 注册条目
@@ -33,6 +34,10 @@ type MemoryGateway struct {
 	taskHandler func(ctx context.Context, to string, task *TaskMessage) (*TaskResult, error)
 	// 消息路由回调
 	routeHandler func(ctx context.Context, msg *Message) error
+	// 跨集群联邦路由器（可选，M5）
+	federator Federator
+	// 本集群名（联邦路由起点）
+	clusterName string
 }
 
 // NewMemoryGateway 创建 A2A Gateway
@@ -41,6 +46,14 @@ func NewMemoryGateway() *MemoryGateway {
 		regs:       make(map[string]registration),
 		federation: make(map[string]map[string]struct{}),
 	}
+}
+
+// WithFederator 启用跨集群联邦委派（M5）
+// clusterName 为本集群名，federator 为跨集群路由器。
+func (g *MemoryGateway) WithFederator(clusterName string, f Federator) *MemoryGateway {
+	g.clusterName = clusterName
+	g.federator = f
+	return g
 }
 
 // WithTaskHandler 设置任务委派执行回调（M3 编排引擎集成时接入）
@@ -86,14 +99,64 @@ func (g *MemoryGateway) Discover(ctx context.Context, tenantID, query string, sk
 }
 
 // SendTask 委派任务给目标 Agent（默认禁止跨租户，D-4）
+// 本地无目标 Agent 且配置联邦时，尝试跨集群委派（M5）。
 func (g *MemoryGateway) SendTask(ctx context.Context, from, to string, task *TaskMessage) (*TaskResult, error) {
-	if err := g.checkSameOrFederatedTenant(ctx, from, to); err != nil {
+	// 本地 Agent 存在 → 本地委派
+	if g.isLocalAgent(to) {
+		if err := g.checkSameOrFederatedTenant(ctx, from, to); err != nil {
+			return nil, err
+		}
+		if g.taskHandler == nil {
+			return &TaskResult{TaskID: task.ID, State: "in-progress"}, nil
+		}
+		return g.taskHandler(ctx, to, task)
+	}
+
+	// 本地无目标 Agent：尝试跨集群联邦委派（M5）
+	return g.sendCrossCluster(ctx, to, task)
+}
+
+// isLocalAgent 判断目标 Agent 是否在本地注册
+func (g *MemoryGateway) isLocalAgent(agentID string) bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	_, ok := g.regs[agentID]
+	return ok
+}
+
+// sendCrossCluster 跨集群联邦委派：从目标集群列表中选择可信任集群转发
+func (g *MemoryGateway) sendCrossCluster(ctx context.Context, to string, task *TaskMessage) (*TaskResult, error) {
+	if g.federator == nil || g.clusterName == "" {
+		return nil, ErrAgentNotFound
+	}
+	// 联邦发现：找出信任本集群且能承载目标技能的目标集群
+	skill := ""
+	if task != nil {
+		skill = task.Type
+	}
+	targets, err := g.federator.Lookup(g.clusterName, skill)
+	if err != nil {
 		return nil, err
 	}
-	if g.taskHandler == nil {
-		return &TaskResult{TaskID: task.ID, State: "in-progress"}, nil
+	for _, target := range targets {
+		// 校验双向信任（D-4）
+		if !g.federator.Allowed(g.clusterName, target) {
+			continue
+		}
+		// 跨集群路由委派
+		payload := map[string]interface{}{
+			"task": task,
+		}
+		if _, err := g.federator.Route(ctx, g.clusterName, target, to, payload); err != nil {
+			continue // 尝试下一个集群
+		}
+		return &TaskResult{
+			TaskID:  task.ID,
+			State:   "in-progress",
+			Message: "delegated to cluster " + target,
+		}, nil
 	}
-	return g.taskHandler(ctx, to, task)
+	return nil, ErrAgentNotFound
 }
 
 // Route 消息路由（含跨集群代理；跨租户需联邦信任）

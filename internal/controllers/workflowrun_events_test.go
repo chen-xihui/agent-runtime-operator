@@ -19,7 +19,7 @@ func nodeEvent(id, runID, nodeID, evtType string) *eventbus.CloudEvent {
 		TenantID: "tenant-a",
 		Source:   "workflow/" + runID,
 		Subject:  runID + "/" + nodeID,
-		Data:     map[string]interface{}{"node": nodeID},
+		Data:     map[string]interface{}{"node": nodeID, "runID": runID},
 	}
 }
 
@@ -123,12 +123,16 @@ func TestNodeEventProcessor_UnknownRunID(t *testing.T) {
 	}
 }
 
-func TestParseNodeSubject(t *testing.T) {
-	runID, nodeID, ok := parseNodeSubject("run-1/analyze")
+func TestParseNodeEvent(t *testing.T) {
+	evt := nodeEvent("evt-1", "run-1", "analyze", eventbus.EventNodeSucceeded)
+	runID, nodeID, ok := parseNodeEvent(evt)
 	if !ok || runID != "run-1" || nodeID != "analyze" {
 		t.Fatalf("parse = %q %q %v", runID, nodeID, ok)
 	}
-	if _, _, ok := parseNodeSubject("no-slash"); ok {
-		t.Fatal("should not parse subject without slash")
+
+	// Data 缺失 runID → 解析失败
+	evt.Data = map[string]interface{}{"node": "analyze"}
+	if _, _, ok := parseNodeEvent(evt); ok {
+		t.Fatal("should not parse without runID")
 	}
 }

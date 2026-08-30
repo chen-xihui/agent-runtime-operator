@@ -293,4 +293,63 @@ M1-M4 集群端到端验证（虚拟机 192.168.0.31）✅
 - 清理 tenant-a Terminating namespace（旧资源残留）
 
 
+M5 收尾：联邦接入 A2A + 开放 SDK ✅
+
+已实现
+- 联邦接入 A2A Gateway（internal/a2a/federation.go + gateway.go）
+  - Federator 接口（Allowed/Route/Lookup）抽象自 federation.Router，避免包循环
+  - MemoryGateway.WithFederator(clusterName, f) 启用跨集群委派
+  - SendTask：本地 Agent → 本地委派；本地无目标 Agent → 跨集群联邦委派
+    - 联邦发现（Lookup）→ 双向信任校验（D-4 Allowed）→ 路由转发
+    - 无联邦/无信任 → ErrAgentNotFound
+- 开放 SDK（sdk/client.go）
+  - New（rest config）/ NewFromClient（复用 client）
+  - Tenant：Create/Get/List
+  - Agent：Create/Get/List
+  - Sandbox：Get/List/Suspend/Resume（M4 快照运维）
+  - Workflow：Create/GetWorkflowRun（GenerateName 唯一运行名）
+- 单元测试：
+  - A2A 联邦：CrossCluster（本地+跨集群）/ CrossClusterNotAllowed（D-4）/ NoFederator ✅
+  - SDK：TenantLifecycle / AgentAndSandbox（含 Suspend/Resume）/ Workflow ✅
+- 全部 14 包 build / vet / test 通过 ✅
+
+待办（后续）
+- 插件市场（SKD 生态扩展）
+- Firecracker 实际 KVM 运行时接入、审计收集到外部存储
+
+
+M3 编排 NATS+Temporal 集群端到端验证（虚拟机 192.168.0.31）🔄
+
+部署
+- NATS（nats:2.10，JetStream，端口 4222/8222）
+- PostgreSQL 13（temporal 支撑库，端口 5432）
+- Temporal（auto-setup + postgres，端口 7233/7234/7235/7239，default namespace）
+- Temporal Worker（独立进程 cmd/worker，注册 GenericOrchestratorWorkflow + DispatchNodeActivity）
+- Operator（--temporal-address + --nats-url，WorkflowRun 控制器 + NodeEventProcessor 启用）
+
+验证结果
+- Workflow m3-pipeline（analyze → review 顺序 DAG）创建 ✅
+- WorkflowRun 创建 → Temporal 执行启动（runID 回写 RUNNING）✅
+- GenericOrchestratorWorkflow 执行 2 节点 DAG：dispatching node analyze → dispatching node review ✅
+- 编排完成：orchestration completed, nodeCount 2 ✅（Temporal 侧执行成功）
+
+发现并修复的 Bug（本地编译通过，待部署验证）
+1. NATS subject 含 '/' 非法字符
+   - worker EventSink 用 "workflow/"+nodeID，NATS subject 不允许 '/'
+   - 修复：改为点分隔 "workflow."+nodeID，runID 经 CloudEvent.Data 传递
+   - NodeEventProcessor：parseNodeSubject（subject 分隔）→ parseNodeEvent（Data 解析）
+2. worker 进程在完成后退会
+   - worker.Run(InterruptCh()) 在后台环境退出
+   - 修复：改为 StartAsync() + select{} 阻塞，保持 worker 持续 poll
+3. DispatchNodeActivity 依赖 context 注入 dispatcher
+   - worker 无法预绑定 context
+   - 修复：改为包级 SetDefaultNodeDispatcher，worker 启动时配置
+4. DispatchInput.RunID 作为 WorkflowID 用于 SignalWorkflow（getRunID 返回 WorkflowID）
+   - 导出 NodeResultSignalName 常量供 worker 发节点结果 Signal
+
+待完成
+- 重启 worker + operator（新二进制）验证事件推进更新 WorkflowRun status 为 SUCCEEDED
+- 注：事件推进依赖 operator 的 NodeEventProcessor 订阅 NATS 并回写 status（R-5 快照）
+
+
 

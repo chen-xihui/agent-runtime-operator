@@ -44,8 +44,8 @@ func (p *NodeEventProcessor) OnEvent(ctx context.Context, evt *eventbus.CloudEve
 		return nil // 已处理过，跳过
 	}
 
-	// 从 subject 解析 runID 与节点（约定 subject: <runID>/<nodeID>）
-	runID, nodeID, ok := parseNodeSubject(evt.Subject)
+	// 从 Data 解析 runID 与节点（NATS subject 不允许 '/'，经 CloudEvent.Data 传递）
+	runID, nodeID, ok := parseNodeEvent(evt)
 	if !ok {
 		return nil
 	}
@@ -159,14 +159,15 @@ func (p *NodeEventProcessor) setFinalPhase(run *agentv1.WorkflowRun, phase strin
 	run.Status.Phase = phase
 }
 
-// parseNodeSubject 解析事件 subject（约定 <runID>/<nodeID>）
-func parseNodeSubject(subject string) (runID, nodeID string, ok bool) {
-	for i := 0; i < len(subject); i++ {
-		if subject[i] == '/' {
-			return subject[:i], subject[i+1:], true
-		}
+// parseNodeEvent 从事件 Data 解析 runID 与 nodeID
+// NATS subject 不允许 '/'，故经 CloudEvent.Data 传递 {node, runID}。
+func parseNodeEvent(evt *eventbus.CloudEvent) (runID, nodeID string, ok bool) {
+	if evt == nil || evt.Data == nil {
+		return "", "", false
 	}
-	return "", "", false
+	nodeID, _ = evt.Data["node"].(string)
+	runID, _ = evt.Data["runID"].(string)
+	return runID, nodeID, nodeID != "" && runID != ""
 }
 
 // nodeStateFromType 从事件类型映射节点结果状态

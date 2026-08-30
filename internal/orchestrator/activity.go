@@ -3,9 +3,30 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"go.temporal.io/sdk/temporal"
 )
+
+// defaultDispatcher 包级默认节点派发器（由 worker/operator 在启动时配置）
+var (
+	defaultDispatcherMu sync.RWMutex
+	defaultDispatcher   *NodeDispatcher
+)
+
+// SetDefaultNodeDispatcher 设置包级默认节点派发器（worker 启动时调用）
+func SetDefaultNodeDispatcher(d *NodeDispatcher) {
+	defaultDispatcherMu.Lock()
+	defer defaultDispatcherMu.Unlock()
+	defaultDispatcher = d
+}
+
+// GetDefaultNodeDispatcher 获取包级默认节点派发器
+func GetDefaultNodeDispatcher() *NodeDispatcher {
+	defaultDispatcherMu.RLock()
+	defer defaultDispatcherMu.RUnlock()
+	return defaultDispatcher
+}
 
 // NodeDispatcher 节点派发器（Activity 实现）。
 // 职责（R-1：I/O 收敛到 Activity）：
@@ -23,7 +44,7 @@ type NodeDispatcher struct {
 
 // DispatchNodeActivity 节点派发 Activity（预注册名）
 func DispatchNodeActivity(ctx context.Context, in DispatchInput) (DispatchOutput, error) {
-	d := GetNodeDispatcher(ctx)
+	d := GetDefaultNodeDispatcher()
 	if d == nil {
 		return DispatchOutput{}, temporal.NewNonRetryableApplicationError(
 			"node dispatcher not configured", "Orchestration", nil)
@@ -66,20 +87,4 @@ func DispatchNodeActivity(ctx context.Context, in DispatchInput) (DispatchOutput
 // buildConditionExpr 构造条件表达式（来自节点定义，经 DispatchInput 携带）
 func buildConditionExpr(in DispatchInput) string {
 	return in.Condition
-}
-
-// nodeDispatcherKey activity 上下文中保存 dispatcher 的 key
-type nodeDispatcherKey struct{}
-
-// WithNodeDispatcher 将 dispatcher 绑定到 activity context（测试/注册用）
-func WithNodeDispatcher(ctx context.Context, d *NodeDispatcher) context.Context {
-	return context.WithValue(ctx, nodeDispatcherKey{}, d)
-}
-
-// GetNodeDispatcher 从 activity context 获取 dispatcher
-func GetNodeDispatcher(ctx context.Context) *NodeDispatcher {
-	if d, ok := ctx.Value(nodeDispatcherKey{}).(*NodeDispatcher); ok {
-		return d
-	}
-	return nil
 }

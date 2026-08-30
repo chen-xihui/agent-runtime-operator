@@ -38,8 +38,11 @@ type DispatchOutput struct {
 	Accepted bool `json:"accepted"`
 }
 
-// 节点结果 Signal 名
-const nodeResultSignal = "node-result"
+// 节点结果 Signal 名（外部经 Temporal SignalWorkflow 发送）
+const (
+	nodeResultSignal    = "node-result"
+	NodeResultSignalName = "node-result"
+)
 
 // ===================== 通用编排 Workflow =====================
 

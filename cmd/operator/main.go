@@ -151,7 +151,7 @@ func main() {
 				setupLog.Error(err, "unable to connect nats", "url", natsURL)
 				os.Exit(1)
 			}
-			if _, err := natsBus.Subscribe(context.Background(), "", "agent.>", nodeEvents.OnEvent); err != nil {
+			if _, err := natsBus.SubscribeAll(context.Background(), nodeEvents.OnEvent); err != nil {
 				setupLog.Error(err, "unable to subscribe node events")
 				os.Exit(1)
 			}

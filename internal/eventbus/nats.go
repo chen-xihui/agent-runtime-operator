@@ -116,7 +116,19 @@ func (b *NatsBus) PublishToAgent(ctx context.Context, agentID string, evt *Cloud
 
 // Subscribe 订阅事件（租户隔离 topic）
 func (b *NatsBus) Subscribe(ctx context.Context, tenantID, topic string, h Handler) (Subscription, error) {
-	subject := b.tenantTopic(tenantID, topic)
+	if tenantID == "" {
+		return nil, fmt.Errorf("eventbus: tenantId required for scoped subscribe")
+	}
+	return b.subscribe(ctx, b.tenantTopic(tenantID, topic), h)
+}
+
+// SubscribeAll 订阅所有租户的事件（subject: <prefix>.>，供 operator 全局监听节点事件）
+func (b *NatsBus) SubscribeAll(ctx context.Context, h Handler) (Subscription, error) {
+	return b.subscribe(ctx, b.prefix()+".>", h)
+}
+
+// subscribe 底层订阅实现（复用 handler 逻辑）
+func (b *NatsBus) subscribe(ctx context.Context, subject string, h Handler) (Subscription, error) {
 	handler := func(msg *nats.Msg) {
 		evt := &CloudEvent{}
 		if err := json.Unmarshal(msg.Data, evt); err != nil {

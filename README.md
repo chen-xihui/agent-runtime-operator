@@ -5,6 +5,8 @@
 基于 **Kubernetes + Operator 模式**，提供多租户隔离的 Agent 沙箱、事件驱动的 Multi-Agent 编排，以及 MCP / A2A 协议标准化接入。
 
 > 详细设计见 [`docs/design-doc.md`](docs/design-doc.md) 与 [`docs/core-interface.md`](docs/core-interface.md)。
+>
+> 虚拟机环境端到端测试步骤见 [`docs/testing-guide.md`](docs/testing-guide.md)。
 
 ## 当前状态（M1-M5 全链路，M1/M4 经真实集群端到端验证）
 
@@ -47,7 +49,8 @@
 - **全链路追踪**（`internal/telemetry/trace.go`）：W3C Trace Context（traceparent）生成/解析/子 span 派生，经 eventbus 跨编排引擎/Agent 透传
 - **结构化日志**（`internal/telemetry/logging.go`）：租户/Agent 维度索引 + 敏感字段脱敏（token/secret/password/credential）
 - **高可用**（`config/manager/manager.yaml`）：多副本（replicas=2）+ LeaderElection（仅 leader 调谐）+ Pod 反亲和
-- **多集群联邦**（`internal/federation/federator.go`）：FederationPolicy 跨集群信任（D-4 双向信任）、跨集群 Agent 路由/发现
+- **多集群联邦**（`internal/federation/federator.go`）：FederationPolicy 跨集群信任（D-4 双向信任）、跨集群 Agent 路由/发现，**已接入 A2A Gateway**（本地无 Agent 时跨集群委派）
+- **开放 SDK**（`sdk/client.go`）：Tenant/Agent/Sandbox/Workflow 管理 API（创建租户、管理沙箱 Suspend/Resume、触发工作流运行）
 
 核心能力：
 
@@ -115,8 +118,9 @@ agent-runtime-operator/
 │   ├── orchestrator/     # 编排引擎（DSL Parser / CEL / Compiler / Temporal DAG）
 │   ├── eventbus/         # 事件总线（NATS JetStream 实现）
 │   ├── mcp/              # MCP Registry / Proxy / Client（stdio+HTTP）
-│   ├── a2a/              # A2A Gateway
+│   ├── a2a/              # A2A Gateway（含跨集群联邦委派）
 │   └── registration/     # Agent↔Registry/Gateway 控制器联动
+├── sdk/                   # 开放 SDK（平台管理 API）
 ├── config/
 │   ├── crd/              # CRD manifests
 │   ├── runtimes/         # RuntimeClass / NetPol
@@ -137,7 +141,7 @@ agent-runtime-operator/
 | M2 | 协议层 | ✅ MCP Registry/Proxy、A2A Gateway、NATS 事件总线、Agent↔Registry/Gateway 控制器联动、MCP 工具调用端到端（真实 Tool Server 验证） |
 | M3 | 编排引擎 | ✅ DSL 解析、CEL 条件、Temporal 委托、WorkflowRun 控制器、事件驱动节点推进、Temporal 通用编排 Workflow（数据驱动 DAG + 重试/补偿）、Human-in-the-loop（approval 节点） |
 | M4 | 强隔离 | ✅ RuntimeAdapter（Firecracker 快照 Suspend/Resume）、Sandbox Suspend/Resume 运维、租户默认 NetworkPolicy Deny-All、DLP 审计存储；待：Firecracker 实际 KVM 运行时接入、审计收集到外部存储 |
-| M5 | 生产化 | 🔄 Metrics、全链路追踪、结构化日志、高可用（多副本+LeaderElection）、多集群联邦已实现；待：开放 SDK 与插件市场 |
+| M5 | 生产化 | ✅ Metrics、全链路追踪、结构化日志、高可用、多集群联邦（含 A2A 接入）、开放 SDK；待：插件市场 |
 
 ## 关键技术选型
 
