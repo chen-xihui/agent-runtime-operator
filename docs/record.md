@@ -390,4 +390,23 @@ Root Cause（事件推进不生效）与修复
 - 全部 15 包 build / vet / test 通过 ✅
 
 
+REST API Server ✅
+
+已实现
+- cmd/api-server：HTTP 服务入口（--addr / --kubeconfig，支持 in-cluster）
+- internal/apiserver/server.go：REST 处理器（对接 SDK）
+  - Tenant：GET/POST /api/v1/tenants，GET /api/v1/tenants/{name}
+  - Agent：GET/POST /api/v1/tenants/{tenant}/agents
+  - Sandbox：GET /api/v1/tenants/{tenant}/sandboxes/{name}
+    - POST .../suspend、POST .../resume（M4 快照运维）
+  - Workflow：POST /api/v1/tenants/{tenant}/workflows
+    - GET /api/v1/tenants/{tenant}/workflowruns/{name}
+  - /healthz 健康检查
+  - 错误映射：NotFound→404、AlreadyExists→409、非法 body→400、panic 恢复中间件
+- Go 1.22 method+path 路由（r.PathValue）
+- 单元测试（httptest + fake client）：
+  Health / CreateAndGetTenant（含 404）/ ListTenants / CreateAndGetSandbox / BadRequest（400）✅
+- 全部 16 包 build / vet / test 通过 ✅
+
+
 

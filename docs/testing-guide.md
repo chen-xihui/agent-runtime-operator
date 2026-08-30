@@ -241,8 +241,10 @@ grep -iE "forbidden|failed to sync" /root/operator.log   # 应为空
 
 ### 4.4 M3：编排引擎（NATS + Temporal 端到端）
 
+> 前置：NATS + Temporal 已部署（见第 2 节），operator 和 worker 已用 `--temporal-address --nats-url` 启动。
+
 ```bash
-# 1) 创建 Workflow
+# 1) 创建 Workflow（顺序 DAG）
 kubectl apply -f - <<'EOF'
 apiVersion: agent.runtime.io/v1
 kind: Workflow
@@ -264,24 +266,48 @@ spec:
   input: {tenantId: tenant-a}
 EOF
 
-# 3) 验证
+# 3) 等待编排执行（约 10-20s）
+sleep 15
+
+# 4) 验证执行启动：runID + workflowID 回写（期望 RUNNING）
 kubectl get workflowrun -n tenant-a \
-  -o jsonpath='{range .items[*]}phase={.status.phase} runID={.status.runId}{"\n"}{end}'
-# 期望 RUNNING（Temporal 执行中）
+  -o jsonpath='{range .items[*]}phase={.status.phase} runID={.status.runId} wfID={.status.workflowId}{"\n"}{end}'
 
-# Worker 执行日志
-grep "dispatching node" /root/worker.log    # analyze → review（拓扑推进）
-grep "orchestration completed" /root/worker.log  # nodeCount 2
+# 5) Worker 执行日志（拓扑推进 analyze → review）
+grep "dispatching node" /root/worker.log          # 期望 analyze、review
+grep "orchestration completed" /root/worker.log   # 期望 nodeCount 2
 
-# 4) 事件推进验证（期望最终 SUCCEEDED + nodeResults）
-kubectl get workflowrun -n tenant-a -o jsonpath='{.items[0].status}{"\n"}'
+# 6) 事件推进验证（核心：期望最终 SUCCEEDED）
+kubectl get workflowrun -n tenant-a \
+  -o jsonpath='{range .items[*]}phase={.status.phase} node={.status.currentNode} events={.status.eventsCount} results={.status.nodeResults}{"\n"}{end}'
+# 期望：phase=SUCCEEDED, events=4, nodeResults={analyze:{SUCCEEDED}, review:{SUCCEEDED}}
 ```
 
 **验证要点**：
-- WorkflowRun 创建 → runID 回写（Temporal 执行启动）
+- WorkflowRun 创建 → `runID`（Temporal RunID）+ `workflowID` 回写（执行启动）
 - Worker 按 DAG 依赖拓扑派发节点（analyze 完成 → review）
-- 节点事件经 NATS → NodeEventProcessor → 更新 status（R-5 快照）
-- 全节点终态后判定 SUCCEEDED/FAILED
+- **事件推进**：worker 发 `NODE_STARTED` + `NODE_SUCCEEDED` 到 NATS → operator NodeEventProcessor → 更新 status（R-5 快照）
+- 全节点终态后判定 `SUCCEEDED`/`FAILED`
+
+**事件推进链路诊断方法**（若 status 不更新）：
+```bash
+# 编译并传送诊断工具（本机）
+# go build -o /tmp/agent-runtime/nats-inspect ./cmd/nats-inspect
+nohup /root/nats-inspect --subject="agent-runtime.>" --duration=25s > /root/natsinspect.log 2>&1 &
+# 趁监听窗口内触发 WorkflowRun，看能否抓到事件
+kubectl apply -f - <<'EOF'
+apiVersion: agent.runtime.io/v1
+kind: WorkflowRun
+metadata: {name: m3-run-dbg, namespace: tenant-a}
+spec: {workflowRef: m3-pipeline, input: {tenantId: tenant-a}}
+EOF
+cat /root/natsinspect.log   # 应显示 4 个事件（analyze/review 各 STARTED+SUCCEEDED）
+```
+
+**已知坑点（影响事件推进）**：
+1. **NODE_SUCCEEDED 必须发**：worker 的 Dispatch 需同时发 `NODE_SUCCEEDED` 事件到 NATS（仅 NODE_STARTED 不会触发终态判定）
+2. **runID 语义**：事件携带的是 **WorkflowID**（`agent-orchestration-*`），而 `status.runId` 是 **Temporal RunID**（`01a0...`），两者不同；需 `status.workflowId` 匹配（已修复）
+3. **worker 必须保持运行**：用 `nohup ... &` 直接启动（`setsid nohup` 组合在 SSH 会话可能异常），`StartAsync` + `select{}` 保持 poll
 
 ---
 
@@ -293,9 +319,13 @@ kubectl get workflowrun -n tenant-a -o jsonpath='{.items[0].status}{"\n"}'
 | Pod `CreateContainerConfigError` / runAsNonRoot | 镜像需 root | Agent `security.runAsNonRoot: false` |
 | Pod `RuntimeHandler "runc" not supported` | dockershim 不支持 RuntimeClass | Agent `runtime.class: ""`（默认运行时） |
 | Operator 启动即退出 | NATS subject 含 `/` 非法 / 订阅失败 | 用修复后的二进制（subject 点分隔） |
-| Worker/Operator 进程消失 | SSH 断开 SIGHUP | 用 `setsid nohup ... < /dev/null &` + `disown` |
+| Worker 启动失败（进程无日志） | `setsid nohup` 组合在 SSH 会话异常 | 改用 `nohup ... < /dev/null &` 直接启动 |
+| Worker/Operator 进程消失 | SSH 断开 SIGHUP | 用 `nohup ... < /dev/null &`（worker 用 `StartAsync`+`select{}` 保持 poll） |
 | Sandbox 卡 Provisioning（relay） | 空数组 `allowedTools: []` 误触发 relay | 用修复后的二进制（`len()>0` 判断） |
 | Sandbox `spec.suspend` 无效 | CRD 缺字段 | 更新 `config/crd/agent.runtime.io_sandboxes.yaml` 并 `kubectl apply` |
+| WorkflowRun 一直 RUNNING（事件不推进） | worker 只发 NODE_STARTED 未发 NODE_SUCCEEDED | worker Dispatch 同时发 NODE_SUCCEEDED 事件 |
+| WorkflowRun 事件被丢弃（events=0） | runID 语义不匹配（事件是 WorkflowID，status.runId 是 Temporal RunID） | 用修复后的二进制（`status.workflowId` 匹配）；`cmd/nats-inspect` 抓包确认 |
+| WorkflowRun `spec.workflowId` 字段无效 | CRD 缺字段 | 更新 `config/crd/agent.runtime.io_workflowruns.yaml` 并 `kubectl apply` |
 | 磁盘不足（本机编译） | C 盘满 | `go clean -cache` 释放空间 |
 | 无法访问外网 | 虚拟机内网 | 本机 `docker save` → SCP → `docker load` |
 
@@ -316,6 +346,22 @@ kubectl apply -f /tmp/tenant.yaml && sleep 6 \
   && sleep 5 && kubectl get sandbox -n tenant-a \
   && kubectl patch sandbox sb-code-reviewer -n tenant-a --type=json -p '[{"op":"replace","path":"/spec/suspend","value":false}]' \
   && sleep 5 && kubectl get sandbox -n tenant-a
+```
+
+M3 编排回归（需 NATS + Temporal + worker 已启动）：
+```bash
+# 触发编排并验证事件推进 → SUCCEEDED
+kubectl delete workflowrun -n tenant-a --all
+kubectl apply -f - <<'EOF'
+apiVersion: agent.runtime.io/v1
+kind: WorkflowRun
+metadata: {name: m3-regress, namespace: tenant-a}
+spec: {workflowRef: m3-pipeline, input: {tenantId: tenant-a}}
+EOF
+sleep 15
+kubectl get workflowrun -n tenant-a \
+  -o jsonpath='{range .items[*]}phase={.status.phase} node={.status.currentNode} events={.status.eventsCount} results={.status.nodeResults}{"\n"}{end}'
+# 期望：phase=SUCCEEDED, events=4（若 phase=RUNNING 且 events=0，按第 4.4 节诊断）
 ```
 
 ---

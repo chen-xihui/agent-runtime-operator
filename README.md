@@ -52,6 +52,7 @@
 - **多集群联邦**（`internal/federation/federator.go`）：FederationPolicy 跨集群信任（D-4 双向信任）、跨集群 Agent 路由/发现，**已接入 A2A Gateway**（本地无 Agent 时跨集群委派）
 - **开放 SDK**（`sdk/client.go`）：Tenant/Agent/Sandbox/Workflow 管理 API（创建租户、管理沙箱 Suspend/Resume、触发工作流运行）
 - **插件市场**（`internal/plugin/`）：插件注册中心（安装/卸载/启停/版本管理/发现）+ Agent 插件扩展（按 Agent 挂载插件能力）
+- **REST API Server**（`cmd/api-server` + `internal/apiserver/`）：通过 HTTP 暴露租户/Agent/Sandbox/Workflow 管理接口（对接 SDK），支持 Suspend/Resume 运维
 
 核心能力：
 
@@ -106,6 +107,9 @@ agent-runtime-operator/
 ├── api/v1/               # CRD Go 类型定义
 ├── cmd/operator/         # Operator 主入口
 ├── cmd/relay/            # Event Relay Sidecar 入口（M1-b）
+├── cmd/worker/           # Temporal 编排 Worker
+├── cmd/api-server/       # REST API Server 入口
+├── cmd/nats-inspect/     # NATS 事件诊断工具
 ├── cmd/mcp-server/       # MCP Server 示例实现（Tool Server 参考）
 ├── internal/
 │   ├── controllers/      # Reconciler（Tenant/Agent/Sandbox/WorkflowRun）
@@ -121,7 +125,8 @@ agent-runtime-operator/
 │   ├── mcp/              # MCP Registry / Proxy / Client（stdio+HTTP）
 │   ├── a2a/              # A2A Gateway（含跨集群联邦委派）
 │   ├── registration/     # Agent↔Registry/Gateway 控制器联动
-│   └── plugin/           # 插件市场（注册中心 + Agent 插件扩展）
+│   ├── plugin/           # 插件市场（注册中心 + Agent 插件扩展）
+│   └── apiserver/        # REST API Server（对接 SDK）
 ├── sdk/                   # 开放 SDK（平台管理 API）
 ├── config/
 │   ├── crd/              # CRD manifests
