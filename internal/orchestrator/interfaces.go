@@ -54,8 +54,8 @@ type ExecutionData struct {
 
 // DAGEngine 执行 DAG（底层委托 Temporal GenericOrchestratorWorkflow）
 type DAGEngine interface {
-	// Execute 以执行数据启动通用编排 Workflow，返回 runID
-	Execute(data *ExecutionData, input map[string]interface{}) (runID string, err error)
+	// Execute 以执行数据启动通用编排 Workflow，返回 runID 与 workflowID
+	Execute(data *ExecutionData, input map[string]interface{}) (runID, workflowID string, err error)
 	// Cancel 取消运行
 	Cancel(runID string) error
 	// OnEvent 处理事件总线投递的节点结果事件（幂等去重后推进）

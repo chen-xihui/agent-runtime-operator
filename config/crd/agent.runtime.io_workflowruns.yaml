@@ -47,6 +47,8 @@ spec:
               properties:
                 runId:
                   type: string
+                workflowId:
+                  type: string
                 phase:
                   type: string
                 currentNode:

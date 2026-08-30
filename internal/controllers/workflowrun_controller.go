@@ -91,15 +91,15 @@ func (r *WorkflowRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		r.updateStatus(ctx, run, agentv1.PhaseRunFailed, "", "", err.Error())
 		return ctrl.Result{}, nil
 	}
-	runID, err := r.Engine.Execute(data, run.Spec.Input)
+	runID, workflowID, err := r.Engine.Execute(data, run.Spec.Input)
 	if err != nil {
 		r.updateStatus(ctx, run, agentv1.PhaseRunFailed, "", "", fmt.Sprintf("execute workflow: %v", err))
 		return ctrl.Result{}, nil
 	}
 
-	// 回写 runID + RUNNING
-	r.updateStatus(ctx, run, agentv1.PhaseRunRunning, runID, "", "")
-	logger.Info("workflow run started", "run", run.Name, "workflow", workflow.Name, "runID", runID)
+	// 回写 runID + workflowID + RUNNING
+	r.updateRunStatus(ctx, run, agentv1.PhaseRunRunning, runID, workflowID)
+	logger.Info("workflow run started", "run", run.Name, "workflow", workflow.Name, "runID", runID, "workflowID", workflowID)
 
 	// 可观测性指标（M5）
 	metrics.ObserveRunStarted(run.Namespace, workflow.Name)
@@ -122,6 +122,29 @@ func (r *WorkflowRunReconciler) compile(w *agentv1.Workflow) (*orchestrator.Exec
 		return nil, err
 	}
 	return r.Compiler.Compile(g)
+}
+
+// updateRunStatus 回写 runID + workflowID（R-5 低频快照）
+func (r *WorkflowRunReconciler) updateRunStatus(ctx context.Context, run *agentv1.WorkflowRun, phase, runID, workflowID string) {
+	changed := false
+	if run.Status.Phase != phase {
+		run.Status.Phase = phase
+		changed = true
+	}
+	if runID != "" && run.Status.RunID != runID {
+		run.Status.RunID = runID
+		changed = true
+	}
+	if workflowID != "" && run.Status.WorkflowID != workflowID {
+		run.Status.WorkflowID = workflowID
+		changed = true
+	}
+	if !changed {
+		return
+	}
+	if err := r.Status().Update(ctx, run); err != nil {
+		log.FromContext(ctx).Error(err, "failed to update workflowrun status", "run", run.Name)
+	}
 }
 
 // updateStatus 更新 WorkflowRun 状态（R-5 低频快照）

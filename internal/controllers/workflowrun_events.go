@@ -112,14 +112,16 @@ func (p *NodeEventProcessor) applyNodeResult(run *agentv1.WorkflowRun, nodeID, s
 	run.Status.EventsCount++
 }
 
-// findRunByID 按 runID 在租户内查找 WorkflowRun
+// findRunByID 在租户内查找 WorkflowRun。
+// 事件携带的 runID 为 Temporal WorkflowID（worker 的 getRunID 返回 WorkflowID），
+// 故同时匹配 Status.RunID 与 Status.WorkflowID。
 func (p *NodeEventProcessor) findRunByID(ctx context.Context, tenantID, runID string) (*agentv1.WorkflowRun, error) {
 	list := &agentv1.WorkflowRunList{}
 	if err := p.List(ctx, list, client.InNamespace(tenantID)); err != nil {
 		return nil, err
 	}
 	for i := range list.Items {
-		if list.Items[i].Status.RunID == runID {
+		if list.Items[i].Status.RunID == runID || list.Items[i].Status.WorkflowID == runID {
 			return &list.Items[i], nil
 		}
 	}

@@ -66,7 +66,8 @@ type WorkflowRunSpec struct {
 // WorkflowRunStatus 执行实例状态
 // 注意：CRD status 为只读低频快照视图(R-5)，实际以 Temporal 为事实状态源。
 type WorkflowRunStatus struct {
-	RunID       string                 `json:"runId"` // 唯一执行标识，幂等键组成部分(N-3)
+	RunID       string                 `json:"runId"`  // Temporal RunID，唯一执行标识(N-3)
+	WorkflowID  string                 `json:"workflowId,omitempty"` // Temporal WorkflowID（事件匹配键）
 	Phase       string                 `json:"phase"` // RUNNING/SUCCEEDED/FAILED/CANCELLED（P2-3）
 	CurrentNode string                 `json:"currentNode,omitempty"`
 	NodeResults map[string]interface{} `json:"nodeResults,omitempty"`

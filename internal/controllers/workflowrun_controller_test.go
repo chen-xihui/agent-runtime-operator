@@ -32,15 +32,15 @@ type fakeEngine struct {
 	err      error
 }
 
-func (f *fakeEngine) Execute(data *orchestrator.ExecutionData, input map[string]interface{}) (string, error) {
+func (f *fakeEngine) Execute(data *orchestrator.ExecutionData, input map[string]interface{}) (string, string, error) {
 	f.executed = true
 	if f.err != nil {
-		return "", f.err
+		return "", "", f.err
 	}
 	if f.runID != "" {
-		return f.runID, nil
+		return f.runID, "wf-" + f.runID, nil
 	}
-	return "run-123", nil
+	return "run-123", "wf-run-123", nil
 }
 func (f *fakeEngine) Cancel(runID string) error {
 	f.cancelled = runID

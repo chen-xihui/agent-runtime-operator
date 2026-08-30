@@ -33,26 +33,26 @@ func NewTemporalEngine(c client.Client, taskQueue string) *TemporalEngine {
 	}
 }
 
-// Execute 以执行数据启动通用编排 Workflow，返回 runID
-func (e *TemporalEngine) Execute(data *ExecutionData, input map[string]interface{}) (string, error) {
+// Execute 以执行数据启动通用编排 Workflow，返回 runID 与 workflowID
+func (e *TemporalEngine) Execute(data *ExecutionData, input map[string]interface{}) (runID, workflowID string, err error) {
 	if data == nil || len(data.Nodes) == 0 {
-		return "", fmt.Errorf("execution data is empty")
+		return "", "", fmt.Errorf("execution data is empty")
 	}
 	if e.client == nil {
-		return "", fmt.Errorf("temporal client is nil")
+		return "", "", fmt.Errorf("temporal client is nil")
 	}
 
 	// WorkflowID 使用可预测前缀 + 时间，保证可搜索且同输入可幂等（N-3）
-	workflowID := fmt.Sprintf("%s-%d", e.workflowIDPrefix, time.Now().UnixNano())
+	workflowID = fmt.Sprintf("%s-%d", e.workflowIDPrefix, time.Now().UnixNano())
 
 	run, err := e.client.ExecuteWorkflow(context.Background(), client.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: e.taskQueue,
 	}, GenericOrchestratorWorkflowName, data, input)
 	if err != nil {
-		return "", fmt.Errorf("start orchestration workflow: %w", err)
+		return "", "", fmt.Errorf("start orchestration workflow: %w", err)
 	}
-	return run.GetRunID(), nil
+	return run.GetRunID(), workflowID, nil
 }
 
 // Cancel 取消运行

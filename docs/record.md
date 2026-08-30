@@ -347,9 +347,32 @@ M3 编排 NATS+Temporal 集群端到端验证（虚拟机 192.168.0.31）🔄
 4. DispatchInput.RunID 作为 WorkflowID 用于 SignalWorkflow（getRunID 返回 WorkflowID）
    - 导出 NodeResultSignalName 常量供 worker 发节点结果 Signal
 
-待完成
-- 重启 worker + operator（新二进制）验证事件推进更新 WorkflowRun status 为 SUCCEEDED
-- 注：事件推进依赖 operator 的 NodeEventProcessor 订阅 NATS 并回写 status（R-5 快照）
+M3 事件推进集群验证 ✅
+
+端到端验证结果（192.168.0.31）
+- Workflow m3-pipeline（analyze → review 顺序 DAG）
+- WorkflowRun 创建 → Temporal 执行 → Worker 派发节点
+- 事件推进完整链路：
+  Worker 发 NODE_STARTED + NODE_SUCCEEDED → NATS → operator NodeEventProcessor → 更新 status
+- 最终状态：phase=SUCCEEDED, wfID=agent-orchestration-<id>, node=review, events=4
+- nodeResults：analyze={SUCCEEDED}, review={SUCCEEDED} ✅
+
+Root Cause（事件推进不生效）与修复
+1. EventSink 只发 NODE_STARTED，缺 NODE_SUCCEEDED（终态）
+   - worker 的 Dispatch 只发 Temporal Signal 推进 Workflow，未发 NODE_SUCCEEDED 事件
+   - 修复：Dispatch 同时发 NODE_SUCCEEDED 到 NATS
+2. runID 语义不匹配：worker 事件携带 WorkflowID，但 WorkflowRun status.RunID 是 Temporal RunID
+   - findRunByID 匹配失败，事件被丢弃
+   - 修复：
+     - WorkflowRunStatus 新增 WorkflowID 字段（+CRD）
+     - TemporalEngine.Execute 返回 (runID, workflowID)
+     - WorkflowRun reconciler 回写 WorkflowID（updateRunStatus）
+     - NodeEventProcessor.findRunByID 同时匹配 RunID 与 WorkflowID
+- 诊断工具：cmd/nats-inspect（订阅 NATS 抓事件，确认 worker 发布链路）
+
+验证辅助
+- worker 用 nohup 直接启动（setsid nohup 组合在 SSH 会话异常），StartAsync+select 保持 poll
+- cmd/nats-inspect 编译传送用于抓包诊断
 
 
 插件市场（M5 收尾）✅
