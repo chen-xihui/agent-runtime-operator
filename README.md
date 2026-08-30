@@ -51,7 +51,7 @@
 - **高可用**（`config/manager/manager.yaml`）：多副本（replicas=2）+ LeaderElection（仅 leader 调谐）+ Pod 反亲和
 - **多集群联邦**（`internal/federation/federator.go`）：FederationPolicy 跨集群信任（D-4 双向信任）、跨集群 Agent 路由/发现，**已接入 A2A Gateway**（本地无 Agent 时跨集群委派）
 - **开放 SDK**（`sdk/client.go`）：Tenant/Agent/Sandbox/Workflow 管理 API（创建租户、管理沙箱 Suspend/Resume、触发工作流运行）
-- **插件市场**（`internal/plugin/`）：插件注册中心（安装/卸载/启停/版本管理/发现）+ Agent 插件扩展（按 Agent 挂载插件能力）
+- **插件市场**（`internal/plugin/` + `Plugin` CRD + `PluginReconciler`）：插件注册中心（安装/卸载/启停/版本管理/发现）+ Agent 插件扩展（`AgentPlugins` 按 Agent 挂载）+ **Plugin 控制器**（CRD→Registry 联动，启用/禁用/状态回写）
 - **REST API Server**（`cmd/api-server` + `internal/apiserver/`）：通过 HTTP 暴露租户/Agent/Sandbox/Workflow 管理接口（对接 SDK），支持 Suspend/Resume 运维
 
 核心能力：

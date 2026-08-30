@@ -29,5 +29,6 @@ func init() {
 		&WorkflowRun{}, &WorkflowRunList{},
 		&ToolBinding{}, &ToolBindingList{},
 		&MCPEndpoint{}, &MCPEndpointList{},
+		&Plugin{}, &PluginList{},
 	)
 }

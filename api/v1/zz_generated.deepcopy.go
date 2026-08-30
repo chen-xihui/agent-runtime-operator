@@ -937,5 +937,94 @@ func (in *WorkflowSpec) DeepCopy() *WorkflowSpec {
 	return out
 }
 
+// DeepCopyInto copies the receiver into the destination.
+func (in *Plugin) DeepCopyInto(out *Plugin) {
+	*out = *in
+	out.TypeMeta = in.TypeMeta
+	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	in.Spec.DeepCopyInto(&out.Spec)
+	out.Status = in.Status
+}
+
+// DeepCopy returns a deep copy of the receiver.
+func (in *Plugin) DeepCopy() *Plugin {
+	if in == nil {
+		return nil
+	}
+	out := new(Plugin)
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyObject implements runtime.Object.
+func (in *Plugin) DeepCopyObject() runtime.Object {
+	if c := in.DeepCopy(); c != nil {
+		return c
+	}
+	return nil
+}
+
+// DeepCopyInto copies the receiver into the destination.
+func (in *PluginList) DeepCopyInto(out *PluginList) {
+	*out = *in
+	out.TypeMeta = in.TypeMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]Plugin, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+}
+
+// DeepCopy returns a deep copy of the receiver.
+func (in *PluginList) DeepCopy() *PluginList {
+	if in == nil {
+		return nil
+	}
+	out := new(PluginList)
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyObject implements runtime.Object.
+func (in *PluginList) DeepCopyObject() runtime.Object {
+	if c := in.DeepCopy(); c != nil {
+		return c
+	}
+	return nil
+}
+
+// DeepCopyInto copies the receiver into the destination.
+func (in *PluginSpec) DeepCopyInto(out *PluginSpec) {
+	*out = *in
+	if in.Tags != nil {
+		in, out := &in.Tags, &out.Tags
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.RequiresAgents != nil {
+		in, out := &in.RequiresAgents, &out.RequiresAgents
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.Enabled != nil {
+		in, out := &in.Enabled, &out.Enabled
+		*out = new(bool)
+		**out = **in
+	}
+}
+
+// DeepCopy returns a deep copy of the receiver.
+func (in *PluginSpec) DeepCopy() *PluginSpec {
+	if in == nil {
+		return nil
+	}
+	out := new(PluginSpec)
+	in.DeepCopyInto(out)
+	return out
+}
+
 // ensure corev1 is referenced so the import is not dropped by generators
 var _ = corev1.ResourceRequirements{}

@@ -424,4 +424,20 @@ DLP 审计收集到外部存储 + 查询 ✅
 - 全部 16 包 build / vet / test 通过 ✅
 
 
+插件市场接入 CRD（Plugin 控制器）✅
+
+已实现
+- Plugin CRD 类型（api/v1/plugin_types.go）
+  - PluginSpec（version/type/description/author/tags/requiresAgents/enabled）+ PluginStatus（state/installedVersion/message）
+  - Cluster 作用域，shortName=plug，subresource.status
+  - 注册 scheme + deepcopy + CRD manifest + sample（plugin_code_search.yaml）
+- PluginReconciler（internal/controllers/plugin_controller.go）
+  - Plugin CRD → PluginRegistry 联动（安装/启用/禁用）
+  - 按 spec.enabled 设置插件状态，回写 status（state/installedVersion/message）
+  - 安装失败回写 failed + message
+- main.go：构造 PluginRegistry 全局单例 + 注册 PluginReconciler（M5 插件市场）
+- 单元测试（fake client + status subresource）：InstallEnabled / Disabled / NotFound ✅
+- 全部 16 包 build / vet / test 通过 ✅
+
+
 

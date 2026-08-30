@@ -1,0 +1,13 @@
+# 示例插件：代码搜索工具扩展（M5 插件市场）
+apiVersion: agent.runtime.io/v1
+kind: Plugin
+metadata:
+  name: code-search
+spec:
+  version: 1.0.0
+  type: tool
+  description: Code search tool extension for reviewers
+  author: platform-team
+  tags: [code, search]
+  requiresAgents: [code-reviewer]
+  enabled: true

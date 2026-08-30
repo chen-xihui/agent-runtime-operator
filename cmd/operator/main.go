@@ -19,6 +19,7 @@ import (
 	"github.com/example/agent-runtime-operator/internal/eventbus"
 	"github.com/example/agent-runtime-operator/internal/mcp"
 	"github.com/example/agent-runtime-operator/internal/orchestrator"
+	"github.com/example/agent-runtime-operator/internal/plugin"
 	"github.com/example/agent-runtime-operator/internal/registration"
 	"github.com/example/agent-runtime-operator/internal/sandbox"
 	"go.temporal.io/sdk/client"
@@ -107,6 +108,9 @@ func main() {
 	a2aGateway := a2a.NewMemoryGateway()
 	syncer := registration.NewSyncer(mcpRegistry, a2aGateway)
 
+	// M5 插件市场：构造 PluginRegistry
+	pluginRegistry := plugin.NewRegistry()
+
 	if err = (&controllers.AgentReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -114,6 +118,16 @@ func main() {
 		Syncer:  syncer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Agent")
+		os.Exit(1)
+	}
+
+	// M5 插件市场：Plugin 控制器（CRD → PluginRegistry）
+	if err = (&controllers.PluginReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Registry: pluginRegistry,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Plugin")
 		os.Exit(1)
 	}
 
