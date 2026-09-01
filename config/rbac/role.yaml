@@ -6,10 +6,10 @@ metadata:
 rules:
   # Agent CRD
   - apiGroups: [agent.runtime.io]
-    resources: [agents, sandboxes, workflows, workflowruns, toolbindings, mcpendpoints]
+    resources: [agents, sandboxes, workflows, workflowruns, toolbindings, mcpendpoints, plugins]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [agent.runtime.io]
-    resources: [agents/status, sandboxes/status, workflowruns/status]
+    resources: [agents/status, sandboxes/status, workflowruns/status, plugins/status]
     verbs: [get, update, patch]
   - apiGroups: [agent.runtime.io]
     resources: [agents/finalizers, sandboxes/finalizers, workflowruns/finalizers]

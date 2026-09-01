@@ -81,6 +81,43 @@ func TestPluginReconciler_Disabled(t *testing.T) {
 	}
 }
 
+func TestPluginReconciler_ReconcileIdempotent(t *testing.T) {
+	// Reconcile 会因 status 更新/重排多次触发，Install 对同版本返回 ErrPluginExists，
+	// 控制器应视为幂等成功而不是置为 failed（回归测试）。
+	p := &agentv1.Plugin{
+		ObjectMeta: metav1.ObjectMeta{Name: "code-search"},
+		Spec: agentv1.PluginSpec{
+			Version: "1.0.0",
+			Type:    plugin.TypeTool,
+			Enabled: boolPtr(true),
+		},
+	}
+	r, reg := pluginReconciler(p)
+	ctx := context.Background()
+
+	// 第一次调谐：安装成功
+	if _, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "code-search"}}); err != nil {
+		t.Fatalf("first reconcile: %v", err)
+	}
+	// 第二次调谐：同版本已存在，应幂等成功（不报错、不置 failed）
+	if _, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "code-search"}}); err != nil {
+		t.Fatalf("second reconcile should be idempotent, got: %v", err)
+	}
+
+	got, err := reg.Get("code-search")
+	if err != nil {
+		t.Fatalf("get plugin: %v", err)
+	}
+	if got.State != plugin.StateEnabled {
+		t.Fatalf("state = %q, want enabled", got.State)
+	}
+	updated := &agentv1.Plugin{}
+	_ = r.Get(ctx, types.NamespacedName{Name: "code-search"}, updated)
+	if updated.Status.State != plugin.StateEnabled {
+		t.Fatalf("status.state = %q, want enabled", updated.Status.State)
+	}
+}
+
 func TestPluginReconciler_NotFound(t *testing.T) {
 	r, _ := pluginReconciler()
 	// 插件不存在时 reconcile 不应报错（IgnoreNotFound）

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -45,9 +46,17 @@ func (r *PluginReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// 安装到注册中心（升级覆盖旧版本）
 	if err := r.Registry.Install(ctx, manifest, nil); err != nil {
-		logger.Error(err, "failed to install plugin", "plugin", p.Name)
-		r.updateStatus(ctx, p, "failed", p.Spec.Version, err.Error())
-		return ctrl.Result{}, err
+		// 同版本已存在视为幂等成功（Reconcile 会重复触发，Install 对同版本非幂等）
+		if !errors.Is(err, plugin.ErrPluginExists) {
+			logger.Error(err, "failed to install plugin", "plugin", p.Name)
+			// 失败时 InstalledVersion 反映注册中心实际已安装版本（降级被拒时仍是旧版本）
+			installed := p.Spec.Version
+			if cur, gerr := r.Registry.Get(p.Name); gerr == nil {
+				installed = cur.Version
+			}
+			r.updateStatus(ctx, p, "failed", installed, err.Error())
+			return ctrl.Result{}, err
+		}
 	}
 
 	// 启用/禁用
