@@ -40,6 +40,7 @@
 
 - **Sandbox Suspend/Resume 运维**（`internal/controllers/sandbox_controller.go`）：`spec.suspend` 运维意图，Running↔Suspended 状态机迁移（Firecracker 快照 Suspend/Resume 语义）
 - **RuntimeAdapter**（`internal/runtime/adapter.go`）：gVisor/Firecracker 适配器，Firecracker 支持快照 Suspend/Resume（`SuspendCapable`，含快照元数据管理），gVisor 降级
+- **Firecracker KVM 运行时**（`internal/runtime/firecracker.go`）：KVM 检测（`/dev/kvm`）、VM 配置生成（`VMConfig`/`BootSource`/`Drive`）、VM 生命周期管理（`VMManager`：启动/停止/状态，经 Firecracker API socket）
 - **租户安全加固**（`internal/controllers/tenant_controller.go`）：租户创建默认 NetworkPolicy **Deny-All**（Ingress+Egress），Agent 沙箱经 Event Relay 唯一安全出口
 - **沙箱资源管理（R-6）**：自动回收（`Agent.spec.security.maxLifetimeMin` 超时回收）、租户配额校验（`Tenant.spec.quota.maxSandboxes` 满则排队）
 - **DLP 审计存储**（`internal/audit/store.go`）：审计记录（租户/Agent/工具/成功状态），MCP Proxy 全量出网审计落库（P1-1），支持查询过滤；**NATS JetStream 持久化存储**（`internal/audit/nats_store.go`）+ **REST 审计查询接口**（`GET /api/v1/audit`）

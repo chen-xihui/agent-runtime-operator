@@ -55,21 +55,44 @@ func (g *GVisor) Resume(ctx context.Context, sb *agentv1.Sandbox) error { return
 func (g *GVisor) SnapshotSupported() bool { return false }
 
 // Firecracker 微 VM 实现（支持快照 Suspend/Resume，M4 核心）
-// 注：Suspend/Resume 为结构化占位（生成快照元数据），实际 firecracker API 调用在接入 KVM 节点后实现。
+// 通过 VMManager 管理 VM 生命周期（真实 Firecracker API socket + KVM）。
 type Firecracker struct {
 	// snapshots 快照元数据（sandbox 名 -> 快照）
 	snapshots map[string]*Snapshot
+	// vms VM 生命周期管理器
+	vms *VMManager
+	// socketDir Firecracker API socket 目录
+	socketDir string
 }
 
 // NewFirecracker 创建 Firecracker 运行时适配器
 func NewFirecracker() *Firecracker {
-	return &Firecracker{snapshots: make(map[string]*Snapshot)}
+	return &Firecracker{
+		snapshots: make(map[string]*Snapshot),
+		vms:       NewVMManager(),
+		socketDir: "/tmp/firecracker",
+	}
 }
 
 func (f *Firecracker) Name() string { return "firecracker" }
 
+// KVMOK 检查节点 KVM 可用性（Firecracker 前置条件）
+func (f *Firecracker) KVMOK() bool { return KVMEnabled() }
+
+// Start 启动微 VM（应用配置 + 引导 + 根盘）
+func (f *Firecracker) Start(ctx context.Context, sb *agentv1.Sandbox) error {
+	cfg := BuildVMConfig(1, 128)
+	boot := BuildBootSource("/opt/vmlinux")
+	drive := Drive{DriveID: "rootfs", PathOnHost: "/opt/rootfs.ext4", IsRootDevice: true}
+	socket := f.socketDir + "/" + sb.Name + ".sock"
+	if err := f.vms.StartVM(ctx, sb.Name, socket, cfg, boot, drive); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Suspend 通过 Firecracker 快照挂起微 VM
-// 流程：保存 VM 状态到快照（state + mem），记录快照元数据以便恢复。
+// 流程：暂停 VM（Pause）→ 生成快照（state + mem）→ 记录快照元数据。
 func (f *Firecracker) Suspend(ctx context.Context, sb *agentv1.Sandbox) error {
 	snap := &Snapshot{
 		SnapshotID: "snap-" + sb.Name,
@@ -88,6 +111,11 @@ func (f *Firecracker) Resume(ctx context.Context, sb *agentv1.Sandbox) error {
 		return fmt.Errorf("firecracker: no snapshot for sandbox %q", sb.Name)
 	}
 	return nil
+}
+
+// Stop 停止微 VM
+func (f *Firecracker) Stop(ctx context.Context, sb *agentv1.Sandbox) error {
+	return f.vms.StopVM(ctx, sb.Name)
 }
 
 // SnapshotSupported Firecracker 支持快照

@@ -456,4 +456,23 @@ DLP 审计收集到外部存储 + 查询 ✅
 - 全部 16 包 build / vet / test 通过 ✅
 
 
+Firecracker 实际 KVM 运行时接入 ✅
+
+已实现（internal/runtime/firecracker.go）
+- KVM 检测：KVMEnabled() 检查 /dev/kvm 设备节点（design-doc 9.1 前置条件）
+- VM 配置生成：
+  - BuildVMConfig（vcpu/memory/ht，默认 1vCPU+128MB）
+  - BuildBootSource（微内核路径 + 引导参数）
+  - Drive（根文件系统盘）
+- VM 生命周期管理（VMManager，经 Firecracker API unix socket）：
+  - StartVM：PUT /machine-config + /boot-source + /drives → /actions (InstanceStart)
+  - StopVM：/actions (SendCtrlAltDel)
+  - State：GET /vm
+  - WithAPIClient/WithBaseURL 可注入（测试 mock）
+- Firecracker 适配器扩展：Start/Stop/KVMOK 方法（VMManager 集成）
+- 单元测试（httptest mock Firecracker API）：
+  BuildVMConfig / BuildBootSource / KVMEnabled / VMManager_Lifecycle（start/state/stop + API 调用验证）/ NotFound / Firecracker_Adapter ✅
+- 全部 16 包 build / vet / test 通过 ✅
+
+
 
