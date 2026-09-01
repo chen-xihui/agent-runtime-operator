@@ -114,7 +114,7 @@ timeout 3 bash -c 'echo > /dev/tcp/127.0.0.1/7233' && echo OPEN
 
 ---
 
-## 3. 构建并部署 Operator + Worker
+## 3. 构建并部署 Operator + Worker + API Server
 
 ### 3.1 本机编译 Linux 版
 ```powershell
@@ -122,12 +122,13 @@ timeout 3 bash -c 'echo > /dev/tcp/127.0.0.1/7233' && echo OPEN
 $env:CGO_ENABLED=0; $env:GOOS="linux"; $env:GOARCH="amd64"
 go build -o /tmp/agent-runtime/operator ./cmd/operator
 go build -o /tmp/agent-runtime/worker  ./cmd/worker
+go build -o /tmp/agent-runtime/api-server ./cmd/api-server
 ```
 
 ### 3.2 传送到虚拟机 + 启动
 ```bash
 # 先杀旧进程（占用二进制时需先杀）
-pkill -9 -f /root/operator; pkill -9 -f /root/worker; sleep 2
+pkill -9 -f /root/operator; pkill -9 -f /root/worker; pkill -9 -f /root/api-server; sleep 2
 # 传送后（chmod +x）
 
 # 启动 Worker（连 Temporal + NATS）——必须用 setsid 保持后台存活！
@@ -138,9 +139,16 @@ disown
 setsid nohup /root/operator --temporal-address=127.0.0.1:7233 --nats-url=nats://127.0.0.1:4222 > /root/operator.log 2>&1 < /dev/null &
 disown
 
+# 启动 API Server（连集群 kubeconfig + NATS 审计，暴露 REST API）
+# 注意：1) api-server 用 --kubeconfig=/root/.kube/config 连集群（跑在宿主机，非 Pod）
+#       2) --addr 用 8090：8080 已被 Operator 的 metrics 服务（--metrics-bind-address=:8080）占用
+setsid nohup /root/api-server --addr=:8090 --kubeconfig=/root/.kube/config --nats-url=nats://127.0.0.1:4222 > /root/apiserver.log 2>&1 < /dev/null &
+disown
+
 sleep 8
 grep -cE "Starting Controller" /root/operator.log   # 期望 4（含 WorkflowRun）
 grep -iE "workflowrun controller|event-driven" /root/operator.log  # 期望 enabled
+grep -iE "api-server listening|audit store enabled" /root/apiserver.log  # 期望两条
 ```
 
 > ⚠️ 关键：必须用 `setsid nohup ... < /dev/null &` + `disown`，否则 SSH 断开后进程会被 SIGHUP 杀掉。
@@ -309,6 +317,55 @@ cat /root/natsinspect.log   # 应显示 4 个事件（analyze/review 各 STARTED
 2. **runID 语义**：事件携带的是 **WorkflowID**（`agent-orchestration-*`），而 `status.runId` 是 **Temporal RunID**（`01a0...`），两者不同；需 `status.workflowId` 匹配（已修复）
 3. **worker 必须保持运行**：用 `nohup ... &` 直接启动（`setsid nohup` 组合在 SSH 会话可能异常），`StartAsync` + `select{}` 保持 poll
 
+### 4.5 API Server（REST API 端到端）
+
+> 前置：Operator 已启动、已有一个 Active 租户（如 `tenant-api`，`tenant-a` 可能 Terminating）、api-server 已启动（见 3.2，`--addr=:8090`）。api-server 通过 kubeconfig 连集群。
+
+```bash
+# 1) 健康检查
+curl -s http://127.0.0.1:8090/healthz   # 期望 {"status":"ok"}
+
+# 2) 列出租户（对接 SDK，回读 CRD）
+curl -s http://127.0.0.1:8090/api/v1/tenants | head -c 400
+
+# 3) 通过 REST 创建租户（POST /api/v1/tenants）
+curl -s -X POST http://127.0.0.1:8090/api/v1/tenants \
+  -H 'Content-Type: application/json' \
+  -d '{"metadata":{"name":"tenant-api"},"spec":{"quota":{"maxSandboxes":5,"maxAgents":5,"maxCpu":"2","maxMemory":"4Gi"}}}'
+kubectl get tenant tenant-api   # 应存在且 Active
+
+# 4) 通过 REST 创建 Agent（触发 Sandbox 调谐）
+# 注意：Agent spec.mcp.allowedTools/endpoints 为必填，需给空数组
+curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/agents \
+  -H 'Content-Type: application/json' \
+  -d '{"metadata":{"name":"reviewer"},"spec":{"image":"busybox:1.36","runtime":{"class":""},"entrypoint":["/bin/sh","-c","sleep infinity"],"mcp":{"allowedTools":[],"endpoints":[]},"security":{"runAsNonRoot":false,"readOnlyRootFS":false}}}'
+sleep 15
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/sandboxes/sb-reviewer | head -c 500   # phase=Running
+
+# 5) 通过 REST 挂起/恢复 Sandbox
+curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/sandboxes/sb-reviewer/suspend
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/sandboxes/sb-reviewer | grep -o '"phase":"[A-Za-z]*"'  # Suspended
+curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/sandboxes/sb-reviewer/resume
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/sandboxes/sb-reviewer | grep -o '"phase":"[A-Za-z]*"'  # Running
+
+# 6) 通过 REST 创建 Workflow + 触发 WorkflowRun
+curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflows \
+  -H 'Content-Type: application/json' \
+  -d '{"metadata":{"name":"api-wf"},"spec":{"entrypoint":"analyze","nodes":[{"id":"analyze","agent":"analyzer","action":"analyze_repo"},{"id":"review","agent":"reviewer","action":"review_code","dependsOn":["analyze"]}]}}'
+# WorkflowRun 创建（API Server 无该端点，用 kubectl 触发，见 4.4）后，经 REST 查询：
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns/api-run-1 | head -c 400   # status.phase=SUCCEEDED
+
+# 7) DLP 审计查询（NATS JetStream；需先有审计记录，如 MCP Proxy 工具调用/网络出网）
+curl -s "http://127.0.0.1:8090/api/v1/audit?tenant=tenant-api&limit=10"   # 期望 {"records":[...]}（无记录为空数组）
+```
+
+**验证要点**：
+- `/healthz` 正常；`/api/v1/tenants` 与 `kubectl` 回读一致（SDK 直连 CRD）
+- 通过 REST 创建租户/Agent 能触发控制器调谐（与 kubectl apply 等价）
+- Sandbox suspend/resume 经 REST 调用等价于 `kubectl patch`
+- `--nats-url` 使 `/api/v1/audit` 可查询 JetStream 审计记录（实测：写入 `audit.tenant-api.tool_call` 后按 tenant/action 过滤均命中）
+- 不存在的资源经 REST 返回 `404`（错误处理正常）
+
 ---
 
 ## 5. 常见问题排查
@@ -326,6 +383,11 @@ cat /root/natsinspect.log   # 应显示 4 个事件（analyze/review 各 STARTED
 | WorkflowRun 一直 RUNNING（事件不推进） | worker 只发 NODE_STARTED 未发 NODE_SUCCEEDED | worker Dispatch 同时发 NODE_SUCCEEDED 事件 |
 | WorkflowRun 事件被丢弃（events=0） | runID 语义不匹配（事件是 WorkflowID，status.runId 是 Temporal RunID） | 用修复后的二进制（`status.workflowId` 匹配）；`cmd/nats-inspect` 抓包确认 |
 | WorkflowRun `spec.workflowId` 字段无效 | CRD 缺字段 | 更新 `config/crd/agent.runtime.io_workflowruns.yaml` 并 `kubectl apply` |
+| API Server 启动 `load kubeconfig: ...` | 未传 `--kubeconfig` 且不在集群内 | 加 `--kubeconfig=/root/.kube/config`（本集群 api-server 跑在宿主机，非 Pod） |
+| API Server 审计 `/api/v1/audit` 永远空数组 | 未配 `--nats-url`（默认 NoopStore） | 加 `--nats-url=nats://127.0.0.1:4222` 接入 JetStream 审计存储 |
+| API Server `bind: address already in use` | 8080 被 Operator metrics 占用 | `--addr=:8090`（Operator 默认 `--metrics-bind-address=:8080`） |
+| Operator 启动即崩溃 `failed to wait for plugin caches to sync: timed out ... *v1.Plugin` | 集群缺 Plugin CRD | `kubectl apply -f config/crd/agent.runtime.io_plugins.yaml`（operator 注册了 Plugin 控制器，无 CRD 缓存无法同步） |
+| Operator/Worker 后台进程随 SSH 断开消失 | `nohup ... &` 在一次性 SSH 命令里仍被 SIGHUP | 用 `systemd-run --unit=ar-xxx <binary> ...` 创建瞬时 systemd 单元（实测可靠） |
 | 磁盘不足（本机编译） | C 盘满 | `go clean -cache` 释放空间 |
 | 无法访问外网 | 虚拟机内网 | 本机 `docker save` → SCP → `docker load` |
 
@@ -383,6 +445,7 @@ kubectl get workflowrun -n tenant-a \
 |------|------|
 | `/root/operator.log` | Operator 日志 |
 | `/root/worker.log` | Worker 日志 |
+| `/root/apiserver.log` | API Server 日志 |
 | `/root/*.yaml` | 测试清单（tenant/agent/workflow 等） |
 | `docker ps` | NATS/Temporal/PostgreSQL 容器 |
 
