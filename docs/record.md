@@ -475,4 +475,28 @@ Firecracker 实际 KVM 运行时接入 ✅
 - 全部 16 包 build / vet / test 通过 ✅
 
 
+Firecracker 协议级端到端验证（方案 A，无 KVM 硬件）✅
+
+背景
+- 当前虚拟机（192.168.0.31）无 /dev/kvm、CPU 无 vmx/svm、CentOS 7 老内核 → 无法跑真实 Firecracker（硬依赖 KVM）
+- 采用方案 A：用"协议忠实"的 mock Firecracker API（监听 unix socket）驱动【生产代码 VMManager 的真实 unix-socket 客户端】
+
+新增测试（internal/runtime/firecracker_protocol_test.go）
+- TestVMManager_Protocol_UnixSocket：生产 VMManager（不注入 apiClient）经真实 unix-socket Client() 驱动 StartVM → 校验
+  /machine-config+/boot-source+/drives/rootfs+/actions 序列与 payload（vcpu_count/mem_size_mib/kernel_image_path/rootfs）→ State=Running → StopVM(SendCtrlAltDel)
+- TestVMManager_Protocol_RejectsBadPayload：mock 拒绝非法 machine-config（vcpu_count=0）→ 400，验证协议双向一致
+- TestVMManager_Protocol_AdapterStart：Firecracker 适配器 Start 经 VMManager（unix socket）命中 mock → InstanceStart
+
+验证结果
+- 3 个新协议测试全部通过（含 -count=5 稳定性）
+- KVM 检测：KVMEnabled() 非 KVM 返回 false 不 panic；Firecracker 适配器 KVMOK() 优雅降级
+- 修复：Windows 上 unix socket 路径长度限制 → 短临时目录（os.MkdirTemp("", "fc")）避免 bind: invalid argument
+- 全部 16 包 build / vet / test 通过 ✅
+
+说明
+- 已验证"代码 → Firecracker API 协议（HTTP/unix socket、payload 契约、状态机）"全链路
+- 唯一无法模拟：内核真正引导（需真实 /dev/kvm + vmlinux/rootfs 镜像）→ 留待真实 KVM 节点
+- 真实 KVM 节点部署清单见 docs/firecracker-kvm-deployment.md（方案 B）
+
+
 

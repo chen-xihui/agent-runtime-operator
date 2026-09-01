@@ -366,6 +366,75 @@ curl -s "http://127.0.0.1:8090/api/v1/audit?tenant=tenant-api&limit=10"   # 期�
 - `--nats-url` 使 `/api/v1/audit` 可查询 JetStream 审计记录（实测：写入 `audit.tenant-api.tool_call` 后按 tenant/action 过滤均命中）
 - 不存在的资源经 REST 返回 `404`（错误处理正常）
 
+### 4.6 插件市场（Plugin sample 端到端）
+
+> 前置：operator 已启动且 `plugins.agent.runtime.io` CRD 已 apply（若缺，operator 会崩溃 `failed to wait for plugin caches to sync`）。
+
+```bash
+# 0) 确认 CRD 与控制器
+kubectl get crd plugins.agent.runtime.io
+kubectl get plugin    # 初始为空
+
+# 1) 安装示例插件（code-search, tool, 1.0.0, enabled）
+kubectl apply -f /root/plugin_code_search.yaml   # 或 config/samples/plugin_code_search.yaml
+sleep 6
+kubectl get plugin code-search -o wide   # 期望 TYPE=tool VERSION=1.0.0 STATE=enabled
+kubectl get plugin code-search -o jsonpath='{.status.installedVersion}'  # 1.0.0
+
+# 2) 禁用（enabled: false）→ 期望 STATE=disabled
+kubectl apply -f /root/plugin_disabled.yaml
+sleep 6; kubectl get plugin code-search -o wide   # STATE=disabled
+
+# 3) 重新启用（恢复 sample）→ 期望 STATE=enabled
+kubectl apply -f /root/plugin_code_search.yaml
+sleep 6; kubectl get plugin code-search -o wide   # STATE=enabled
+
+# 4) 版本升级 1.0.0 → 1.1.0 → 期望 enabled, installedVersion=1.1.0
+kubectl apply -f /root/plugin_upgrade.yaml
+sleep 6; kubectl get plugin code-search -o wide
+
+# 5) 版本降级 1.1.0 → 0.9.0 → 期望 rejected
+kubectl apply -f /root/plugin_downgrade.yaml
+sleep 6
+kubectl get plugin code-search -o wide          # STATE=failed
+kubectl get plugin code-search -o jsonpath='{.status.message}'         # plugin: version conflict
+kubectl get plugin code-search -o jsonpath='{.status.installedVersion}' # 保留 1.1.0（实际安装版本）
+```
+
+**验证要点**：
+- 安装 → `enabled`；禁用 → `disabled`；重新启用 → `enabled`（幂等）
+- 版本升级成功；**版本降级被拒**（`plugin: version conflict`），`installedVersion` 反映注册中心**实际安装版本**
+- 插件注册中心是**进程内内存**（`plugin.Registry`）：重启 operator 后注册表清空，downgrade 保护仅在单进程生命周期内有效
+
+### 4.7 Firecracker 运行时（协议级验证，无需 KVM 硬件）
+
+> 背景：Firecracker 是微 VM，**硬依赖 `/dev/kvm`**（design-doc 9.1）。无 KVM 的测试机无法跑真实内核，但可验证
+> "代码 → Firecracker API 协议（HTTP/unix socket、payload 契约、状态机）"全链路。
+
+```bash
+# 方案 A：协议级端到端验证（生产 VMManager 走真实 unix-socket 客户端 + 协议忠实 mock）
+# 本机直接运行（无需集群/虚拟机/KVM）：
+go test ./internal/runtime/ -run 'TestVMManager_Protocol' -v -count=1
+# 期望全部 PASS：
+#   TestVMManager_Protocol_UnixSocket    StartVM→payload校验→State=Running→StopVM(SendCtrlAltDel)
+#   TestVMManager_Protocol_RejectsBadPayload  非法 machine-config(vcpu=0) 被拒 400
+#   TestVMManager_Protocol_AdapterStart  Firecracker 适配器 Start 经 VMManager 命中 mock → InstanceStart
+
+# 稳定性
+go test ./internal/runtime/ -run 'TestVMManager_Protocol' -count=5
+
+# KVM 能力检测（真实 KVM 节点上应输出 true）
+cat /dev/kvm  # 存在设备即支持
+# 代码：KVMEnabled()/Firecracker.KVMOK() 非 KVM 返回 false 且不 panic（优雅降级）
+```
+
+**验证要点**：
+- 生产 `VMManager`（不注入 apiClient）经 **unix socket 传输** 驱动 `StartVM/State/StopVM`
+- 线上 payload 与真实 Firecracker API 契约一致：`/machine-config`（vcpu_count/mem_size_mib）、`/boot-source`（kernel_image_path/boot_args）、`/drives/rootfs`（path_on_host/is_root_device）、`/actions`（InstanceStart/SendCtrlAltDel）
+- 状态机：NotStarted → Running（InstanceStart）→ NotStarted（SendCtrlAltDel）
+- 协议双向一致：非法 payload 被 mock 拒绝（400）
+- **唯一无法模拟**：内核真正引导（需真实 `/dev/kvm` + vmlinux/rootfs 镜像）→ 见 **`docs/firecracker-kvm-deployment.md`（真实 KVM 节点部署清单，方案 B）**
+
 ---
 
 ## 5. 常见问题排查
@@ -387,6 +456,7 @@ curl -s "http://127.0.0.1:8090/api/v1/audit?tenant=tenant-api&limit=10"   # 期�
 | API Server 审计 `/api/v1/audit` 永远空数组 | 未配 `--nats-url`（默认 NoopStore） | 加 `--nats-url=nats://127.0.0.1:4222` 接入 JetStream 审计存储 |
 | API Server `bind: address already in use` | 8080 被 Operator metrics 占用 | `--addr=:8090`（Operator 默认 `--metrics-bind-address=:8080`） |
 | Operator 启动即崩溃 `failed to wait for plugin caches to sync: timed out ... *v1.Plugin` | 集群缺 Plugin CRD | `kubectl apply -f config/crd/agent.runtime.io_plugins.yaml`（operator 注册了 Plugin 控制器，无 CRD 缓存无法同步） |
+| 插件安装后 status 反复变 `failed`，message=`plugin: already exists` | Reconcile 重复触发，`Registry.Install` 对同版本非幂等返回 ErrPluginExists | 用修复后的二进制（controller 将 `ErrPluginExists` 视为幂等成功） |
 | Operator/Worker 后台进程随 SSH 断开消失 | `nohup ... &` 在一次性 SSH 命令里仍被 SIGHUP | 用 `systemd-run --unit=ar-xxx <binary> ...` 创建瞬时 systemd 单元（实测可靠） |
 | 磁盘不足（本机编译） | C 盘满 | `go clean -cache` 释放空间 |
 | 无法访问外网 | 虚拟机内网 | 本机 `docker save` → SCP → `docker load` |
