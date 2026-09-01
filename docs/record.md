@@ -440,4 +440,20 @@ DLP 审计收集到外部存储 + 查询 ✅
 - 全部 16 包 build / vet / test 通过 ✅
 
 
+沙箱资源管理（R-6）✅
+
+已实现（internal/controllers/sandbox_controller.go）
+- 自动回收（R-6）：
+  - Sandbox Running 时读取关联 Agent.spec.security.maxLifetimeMin
+  - 超过最大存活时长（从 LastTransitionTime 计算）→ DestroyPod + phase=Terminated
+  - Agent 删除时回收沙箱
+- 租户配额校验（R-6）：
+  - Sandbox Provisioning 时读取 Tenant.spec.quota.maxSandboxes
+  - 租户内非终态沙箱数达上限 → 排队等待（不创建 Pod，RequeueAfter 10s）
+- 单元测试（fake client + status subresource）：
+  RecycleExceededLifetime（超时回收）/ NoRecycleWithinLifetime（未超时不回收）/ QuotaExceeded（配额满排队）✅
+- 测试 scheme 补充 corev1 注册（Pod）
+- 全部 16 包 build / vet / test 通过 ✅
+
+
 

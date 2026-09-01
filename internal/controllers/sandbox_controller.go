@@ -73,6 +73,18 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 
 	case agentv1.PhaseProvisioning:
+		// 租户配额校验（R-6）：超过 MaxSandboxes 则排队等待（不创建 Pod）
+		quotaFull, err := r.quotaExceeded(ctx, sb)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if quotaFull {
+			// 直接更新 message（phase 不变，setPhase 不生效）
+			sb.Status.Message = "waiting for tenant sandbox quota"
+			_ = r.Status().Update(ctx, sb)
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+
 		state, err := r.Sandbox.EnsurePod(ctx, sb, tenantNS)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -95,6 +107,15 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 
 	case agentv1.PhaseRunning:
+		// 自动回收（R-6）：超过 Agent 配置的 MaxLifetimeMin 则回收沙箱
+		recycled, err := r.maybeRecycle(ctx, sb)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if recycled {
+			return ctrl.Result{}, nil
+		}
+
 		// 确保 Pod 仍在运行；若被删除则回退 Provisioning
 		state, err := r.Sandbox.EnsurePod(ctx, sb, tenantNS)
 		if err != nil {
@@ -119,6 +140,75 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// maybeRecycle 检查沙箱是否超过关联 Agent 的最大存活时长（R-6），超时则自动回收。
+// 返回 true 表示已回收（Sandbox 转 Terminated + Pod 清理）。
+func (r *SandboxReconciler) maybeRecycle(ctx context.Context, sb *agentv1.Sandbox) (bool, error) {
+	// 读取关联 Agent 获取 MaxLifetimeMin
+	agent := &agentv1.Agent{}
+	if err := r.Get(ctx, client.ObjectKey{Name: sb.Spec.AgentRef, Namespace: sb.Namespace}, agent); err != nil {
+		if apierrors.IsNotFound(err) {
+			// Agent 已删除，回收沙箱
+			log.FromContext(ctx).Info("agent deleted, recycling sandbox", "sandbox", sb.Name)
+			return r.recycle(ctx, sb)
+		}
+		return false, err
+	}
+	maxLife := agent.Spec.Security.MaxLifetimeMin
+	if maxLife <= 0 {
+		return false, nil // 未配置生命周期，不回收
+	}
+	// 从创建时间（LastTransitionTime 为 Running 进入时间）计算存活时长
+	start := sb.Status.LastTransitionTime.Time
+	if start.IsZero() {
+		return false, nil
+	}
+	if time.Since(start) > time.Duration(maxLife)*time.Minute {
+		log.FromContext(ctx).Info("sandbox exceeded max lifetime, recycling",
+			"sandbox", sb.Name, "maxLifetimeMin", maxLife, "runningSince", start)
+		return r.recycle(ctx, sb)
+	}
+	return false, nil
+}
+
+// recycle 回收沙箱：清理 Pod 并标记 Terminated
+func (r *SandboxReconciler) recycle(ctx context.Context, sb *agentv1.Sandbox) (bool, error) {
+	if err := r.Sandbox.DestroyPod(ctx, sb, sb.Namespace); err != nil {
+		return false, err
+	}
+	r.setPhase(sb, agentv1.PhaseTerminated, "recycled by policy (R-6)")
+	return true, nil
+}
+
+// quotaExceeded 检查租户沙箱配额（R-6）：若租户 MaxSandboxes 已满则返回 true。
+// 统计租户内非 Terminated 的沙箱数，与租户配额比较。
+func (r *SandboxReconciler) quotaExceeded(ctx context.Context, sb *agentv1.Sandbox) (bool, error) {
+	// 读取租户配额（Tenant 为 Cluster-scoped，名与租户命名空间一致）
+	tenant := &agentv1.Tenant{}
+	if err := r.Get(ctx, client.ObjectKey{Name: sb.Namespace}, tenant); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil // 无租户配额，不限制
+		}
+		return false, err
+	}
+	maxSandboxes := tenant.Spec.Quota.MaxSandboxes
+	if maxSandboxes <= 0 {
+		return false, nil // 未配置配额，不限制
+	}
+
+	// 统计租户内非终态沙箱数
+	list := &agentv1.SandboxList{}
+	if err := r.List(ctx, list, client.InNamespace(sb.Namespace)); err != nil {
+		return false, err
+	}
+	active := 0
+	for i := range list.Items {
+		if list.Items[i].Status.Phase != agentv1.PhaseTerminated {
+			active++
+		}
+	}
+	return active >= maxSandboxes, nil
 }
 
 func (r *SandboxReconciler) setPhase(sb *agentv1.Sandbox, phase, msg string) {
