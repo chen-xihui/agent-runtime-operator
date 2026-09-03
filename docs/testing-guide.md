@@ -381,6 +381,26 @@ curl -s "http://127.0.0.1:8090/api/v1/audit?tenant=tenant-api&limit=10"   # 期�
 - `--nats-url` 使 `/api/v1/audit` 可查询 JetStream 审计记录
 - 不存在的资源经 REST 返回 `404`（错误处理正常）
 
+**✅ 集群实测记录（2026-09-03，192.168.0.31，api-server v2）**：
+```bash
+# POST /workflowruns 触发执行（body: ref/input）→ 生成 run-5vzwj，经 Temporal 全链路达 SUCCEEDED
+curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns \
+  -H 'Content-Type: application/json' -d @/root/run-body.json    # {"ref":"api-wf","input":{...}}
+kubectl get workflowrun -n tenant-api run-5vzwj                   # SUCCEEDED
+
+# GET /workflowruns/{name}/events → 节点级事件流
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns/run-5vzwj/events
+# → analyze:NODE_SUCCEEDED, review:NODE_SUCCEEDED, WORKFLOW_COMPLETED:SUCCEEDED
+
+# POST /workflowruns/{name}/cancel → 200 + phase 变 CANCELLED；ghost → 404
+curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns/run-6rvqn/cancel
+kubectl get workflowrun -n tenant-api run-6rvqn -o jsonpath='{.status.phase}'   # CANCELLED
+
+# DELETE /agents/{name} → 200 + 列表清空；ghost → 404
+curl -s -X DELETE http://127.0.0.1:8090/api/v1/tenants/tenant-api/agents/reviewer
+kubectl get agent -n tenant-api    # No resources found
+```
+
 ### 4.6 插件市场（Plugin sample 端到端）
 
 > 前置：operator 已启动且 `plugins.agent.runtime.io` CRD 已 apply（若缺，operator 会崩溃 `failed to wait for plugin caches to sync`）。

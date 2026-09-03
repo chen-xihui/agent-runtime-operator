@@ -525,5 +525,14 @@ API Server 补齐编排执行/取消/事件/删除端点（design-doc 6.1 对齐
 - cancel 语义：CRD status 为只读快照，取消意图经 status.phase=CANCELLED 由 reconciler 识别并调 Temporal Cancel
 - events 语义：CRD 无事件历史（R-5），以 status 快照派生节点级事件，准实时；精确事件流需从事件总线拉取（后续扩展）
 
+集群 REST 端到端复验（2026-09-03，192.168.0.31，api-server v2）✅
+- 栈重建：VM 重启致 systemd 瞬时单元丢失 → 重拉 NATS/Postgres/Temporal + worker/operator/api-server（systemd-run）
+- POST /api/v1/tenants/tenant-api/workflowruns（ref=api-wf）→ 生成 run-5vzwj，经 Temporal 全链路达 SUCCEEDED
+- GET /workflowruns/run-5vzwj/events → analyze/review NODE_SUCCEEDED + WORKFLOW_COMPLETED(SUCCEEDED)
+- POST /workflowruns/run-6rvqn/cancel → 200，status.phase SUCCEEDED→CANCELLED；ghost→404
+- DELETE /agents/reviewer → 200，列表清空（No resources）；ghost→404
+- GET /workflowruns（list）返回全部 run；缺 ref 触发 → 400（单测覆盖）
+- 全部新端点集群实测通过 ✅
+
 
 
