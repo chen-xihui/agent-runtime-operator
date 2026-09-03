@@ -558,4 +558,21 @@ Webhook 准入控制（design-doc 3.3/7.1）✅
 - 集群端到端（WebhookServer + Webhook 配置）为可选部署，待 KVM/具备注入证书的节点验证
 
 
+Helm chart（design-doc 9.2，charts/agent-infra）✅
+新增
+- charts/agent-infra/：Chart.yaml + values.yaml + templates/
+  - _helpers.tpl（通用 name/labels/namespace）
+  - namespace / operator-serviceaccount / operator-rbac / operator-deployment / worker-deployment
+  - nats（Deployment+Service, JetStream）/ temporal（Deployment+Service）/ postgres（Secret+Deployment+Service，可关）
+  - runtimeclasses（gvisor/firecracker，条件渲染）
+- values.yaml 组件开关：operator.enabled / worker.enabled / nats.enabled / temporal.enablePostgres / runtimeclasses.enable*
+  - operator replicas=2 + LeaderElection（M5）、enableWebhooks 可选
+  - operator 连 agent-infra-temporal:7233 + nats://agent-infra-nats:4222（服务名）
+- Makefile：helm-lint / helm-template 目标
+验证
+- helm lint 0 failed；helm template 渲染 13 个资源（Namespace/SA/Secret/ClusterRole/CRB/3SVC/4Deploy/RuntimeClass）RC=0
+- 开关条件模板实测：operator.enabled=false 资源消失；temporal.enablePostgres=false → postgres Secret/Deploy 消失 ✅
+- 真实部署需镜像仓库 + CRD 已装（helm install 前置）
+
+
 

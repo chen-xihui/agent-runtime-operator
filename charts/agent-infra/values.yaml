@@ -1,0 +1,76 @@
+# agent-infra 全局默认值（可被 --set 覆盖）
+
+namespace:
+  name: agent-runtime-system
+  create: true
+  # 命名空间 PodSecurity（restricted 会拒绝 root 容器；验证环境可降级 privileged）
+  podSecurity: restricted
+
+# ---- Operator 控制面（design-doc 9.1）----
+operator:
+  enabled: true
+  replicas: 2
+  image:
+    repository: registry.internal/agent-runtime/operator
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  # 连接 Temporal 与 NATS（operator 需连两者做事件驱动编排）
+  temporalAddress: agent-infra-temporal:7233
+  natsURL: nats://agent-infra-nats:4222
+  # 准入 Webhook（需证书注入，默认关；生产建议启用 + cert-manager）
+  enableWebhooks: false
+  webhookPort: 9443
+  # M5 高可用 LeaderElection
+  leaderElection: true
+
+# ---- Event Relay Worker（编排派发，若与 operator 分离部署）----
+worker:
+  enabled: false
+  replicas: 1
+  image:
+    repository: registry.internal/agent-runtime/worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  temporalAddress: agent-infra-temporal:7233
+  natsURL: nats://agent-infra-nats:4222
+
+# ---- NATS JetStream 事件总线（design-doc 事件总线）----
+nats:
+  enabled: true
+  image:
+    repository: nats
+    tag: 2.10
+  serviceType: ClusterIP
+  # JetStream 存储目录
+  jetstream: true
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 250m, memory: 256Mi }
+
+# ---- Temporal 编排引擎 ----
+temporal:
+  enabled: true
+  image:
+    repository: temporalio/auto-setup
+    tag: latest
+  # 是否启用内嵌 PostgreSQL（自管依赖）；生产可指向外部实例
+  enablePostgres: true
+  postgres:
+    image:
+      repository: postgres
+      tag: "13"
+    user: temporal
+    password: temporal
+    database: temporal
+
+# ---- 沙箱 RuntimeClass（design-doc 4.1.2，节点需对应能力）----
+runtimeclasses:
+  # gvisor 运行时（默认，受限节点）
+  enableGvisor: true
+  # firecracker 运行时（需 /dev/kvm 节点）
+  enableFirecracker: false
+  # 是否容忍默认 NoSchedule（配合节点 taint）
+  firecrackerToleration: true

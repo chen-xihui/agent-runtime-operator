@@ -1,0 +1,35 @@
+{{- if .Values.runtimeclasses.enableGvisor }}
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+  labels:
+    {{- include "agent-infra.labels" . | nindent 4 }}
+handler: runsc
+overhead:
+  podFixed:
+    cpu: 100m
+    memory: 64Mi
+scheduling:
+  nodeSelector:
+    agent.runtime.io/runtime: gvisor
+{{- end }}
+{{- if .Values.runtimeclasses.enableFirecracker }}
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: firecracker
+  labels:
+    {{- include "agent-infra.labels" . | nindent 4 }}
+handler: kata-fc
+scheduling:
+  nodeSelector:
+    agent.runtime.io/runtime: firecracker
+  {{- if .Values.runtimeclasses.firecrackerToleration }}
+  tolerations:
+    - key: agent.runtime.io/firecracker
+      operator: Exists
+      effect: NoSchedule
+  {{- end }}
+{{- end }}

@@ -1,0 +1,70 @@
+{{- if .Values.operator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-infra.operatorName" . }}
+  namespace: {{ include "agent-infra.namespace" . }}
+  labels:
+    control-plane: {{ include "agent-infra.operatorName" . }}
+    {{- include "agent-infra.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicas }}
+  selector:
+    matchLabels:
+      control-plane: {{ include "agent-infra.operatorName" . }}
+  template:
+    metadata:
+      labels:
+        control-plane: {{ include "agent-infra.operatorName" . }}
+        {{- include "agent-infra.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "agent-infra.operatorName" . }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    control-plane: {{ include "agent-infra.operatorName" . }}
+                topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: manager
+          image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag }}"
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            {{- if .Values.operator.enableWebhooks }}
+            - --enable-webhooks
+            {{- end }}
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: {{ .Values.operator.temporalAddress | quote }}
+            - name: NATS_URL
+              value: {{ .Values.operator.natsURL | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            {{- if .Values.operator.enableWebhooks }}
+            - name: webhook
+              containerPort: {{ .Values.operator.webhookPort }}
+            {{- end }}
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8081 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8081 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: {{ toYaml .Values.operator.resources.requests | nindent 14 }}
+            limits: {{ toYaml .Values.operator.resources.limits | nindent 14 }}
+{{- end }}

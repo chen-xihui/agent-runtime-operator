@@ -1,0 +1,9 @@
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "agent-infra.namespace" . }}
+  labels:
+    pod-security.kubernetes.io/enforce: {{ .Values.namespace.podSecurity | default "restricted" }}
+    {{- include "agent-infra.labels" . | nindent 4 }}
+{{- end }}

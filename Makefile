@@ -69,6 +69,18 @@ install-runtimes: ## 注册沙箱运行时 RuntimeClass
 	$(KUBECTL) apply -f config/runtimes/gvisor.yaml
 	$(KUBECTL) apply -f config/runtimes/firecracker.yaml
 
+HELM ?= helm
+CHART := charts/agent-infra
+
+.PHONY: helm-lint
+helm-lint: ## lint Helm chart（需 helm）
+	$(HELM) lint $(CHART)
+
+.PHONY: helm-template
+helm-template: ## 渲染 Helm chart 校验模板（无需集群）
+	$(HELM) template agent-infra $(CHART) --namespace agent-runtime-system > /tmp/agent-infra-render.yaml
+	@echo "rendered $(shell grep -c '^kind:' /tmp/agent-infra-render.yaml) resources"
+
 .PHONY: docker-build
 docker-build: ## 构建 Operator 镜像
 	docker build -t $(IMG) .

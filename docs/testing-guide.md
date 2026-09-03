@@ -513,6 +513,39 @@ EOF
 - Agent mutating 默认值：runtime.class 空→gvisor、runAsNonRoot 空→true（安全默认）
 - 集群端到端需 WebhookServer（`--enable-webhooks` + 证书）+ Webhook 配置（`config/webhook/`）
 
+### 4.9 Helm chart（`charts/agent-infra` 一键编排）
+
+> design-doc 9.2：编排 Operator 控制面 + NATS 事件总线 + Temporal + PostgreSQL + RuntimeClass。
+
+```bash
+# 1) 本地校验（无需集群，需 helm 3）：
+make helm-lint        # helm lint charts/agent-infra
+make helm-template    # helm template 渲染到 /tmp/agent-infra-render.yaml，打印资源数
+
+# 2) 资源清单（helm template 全部 13 个）：
+#    Namespace / SA / Secret(postgres) / ClusterRole(+Binding) /
+#    3×Service(NATS/Temporal/Postgres) / 4×Deployment(Operator/NATS/Temporal/Postgres) / RuntimeClass(gvisor)
+
+# 3) 组件开关（条件模板验证）：
+helm template t ./charts/agent-infra --set operator.enabled=false          # operator 资源消失
+helm template t ./charts/agent-infra --set temporal.enablePostgres=false   # postgres Secret/Deployment 消失
+
+# 4) 集群部署（真实镜像仓库 + CRD 已装后）：
+helm install agent-infra ./charts/agent-infra --namespace agent-runtime-system --create-namespace
+# 生产参数示例：
+helm upgrade agent-infra ./charts/agent-infra --namespace agent-runtime-system \
+  --set operator.image.repository=<repo>/operator \
+  --set operator.image.tag=<ver> \
+  --set operator.enableWebhooks=true
+```
+
+**验证要点**：
+- `helm lint` 0 失败；`helm template` 渲染 13 个资源无报错
+- operator 连 `agent-infra-temporal:7233` + `nats://agent-infra-nats:4222`（服务名解析）
+- operator replicas=2 + LeaderElection（M5 高可用）；`--enable-webhooks` 可选开启准入
+- 组件经 `enabled` 开关独立控制（operator/worker/nats/temporal/postgres）
+- 真实部署需：镜像推送到集群可拉取的仓库 + CRD 已安装（`make install`）
+
 ---
 
 ## 5. 常见问题排查
@@ -532,6 +565,8 @@ EOF
 | WorkflowRun `spec.workflowId` 字段无效 | CRD 缺字段 | 更新 `config/crd/agent.runtime.io_workflowruns.yaml` 并 `kubectl apply` |
 | 应用 webhook 配置后资源无法创建 | WebhookServer 未启/证书不匹配 | 确认 operator `--enable-webhooks` 启动且 `/tmp/k8s-webhook-server/serving-certs` 有 tls.crt/key；重跑 `webhook.sh` 刷新 caBundle |
 | webhook 报 `x509: certificate ...` | caBundle 与服务端证书 CA 不一致 | 用同一 `webhook.sh` 生成的 ca.crt base64 填 ValidatingWebhookConfiguration |
+| operator Pod 报 `nats: no servers` / 连不上 Temporal | Deployment 连 NATS/Temporal 地址错 | chart 中 operator 连 `agent-infra-nats:4222`/`agent-infra-temporal:7233`（服务名，非 localhost）；检查 Service 就绪 |
+| `helm template` 报模板函数错误 | values 结构不符 | 对照 `charts/agent-infra/values.yaml` 结构；`helm lint` 会提示 |
 | API Server 启动 `load kubeconfig: ...` | 未传 `--kubeconfig` 且不在集群内 | 加 `--kubeconfig=/root/.kube/config`（本集群 api-server 跑在宿主机，非 Pod） |
 | API Server 审计 `/api/v1/audit` 永远空数组 | 未配 `--nats-url`（默认 NoopStore） | 加 `--nats-url=nats://127.0.0.1:4222` 接入 JetStream 审计存储 |
 | API Server `bind: address already in use` | 8080 被 Operator metrics 占用 | `--addr=:8090`（Operator 默认 `--metrics-bind-address=:8080`） |

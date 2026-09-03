@@ -1,0 +1,61 @@
+{{- if .Values.operator.enabled }}
+# Operator ClusterRole：管理 agent.runtime.io 全部 CRD + 租户命名空间 + pod/svc（design-doc R-4 权限唯一来源）
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agent-infra.operatorName" . }}-manager-role
+  labels:
+    {{- include "agent-infra.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, namespaces/finalizers]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, services, configmaps, secrets, persistentvolumeclaims, serviceaccounts]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create, get]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [policy]
+    resources: [podsecuritypolicies, poddisruptionbudgets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [node.k8s.io]
+    resources: [runtimeclasses]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [agent.runtime.io]
+    resources: [tenants, agents, sandboxes, workflows, workflowruns, toolbindings, mcpendpoints, plugins]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [agent.runtime.io]
+    resources: [tenants/status, agents/status, sandboxes/status, workflowruns/status, plugins/status]
+    verbs: [get, update, patch]
+  - apiGroups: [agent.runtime.io]
+    resources: [tenants/finalizers, agents/finalizers, sandboxes/finalizers, workflowruns/finalizers]
+    verbs: [update]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete] # LeaderElection
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agent-infra.operatorName" . }}-manager-rolebinding
+  labels:
+    {{- include "agent-infra.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agent-infra.operatorName" . }}-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agent-infra.operatorName" . }}
+    namespace: {{ include "agent-infra.namespace" . }}
+{{- end }}

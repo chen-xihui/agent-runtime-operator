@@ -1,0 +1,15 @@
+apiVersion: v2
+name: agent-infra
+description: agent-runtime-operator 基础设施一键编排（design-doc 9.2）。含 Operator 控制面 + NATS 事件总线 + Temporal 编排引擎 + PostgreSQL。
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - agent-runtime
+  - operator
+  - nats
+  - temporal
+maintainers:
+  - name: platform-team
+annotations:
+  "agent.runtime.io/design-section": "9.2"

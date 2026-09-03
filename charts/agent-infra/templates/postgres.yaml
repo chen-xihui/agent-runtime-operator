@@ -1,0 +1,66 @@
+{{- if and .Values.temporal.enabled .Values.temporal.enablePostgres }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "agent-infra.postgresName" . }}
+  namespace: {{ include "agent-infra.namespace" . }}
+  labels:
+    {{- include "agent-infra.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  user: {{ .Values.temporal.postgres.user | quote }}
+  password: {{ .Values.temporal.postgres.password | quote }}
+  database: {{ .Values.temporal.postgres.database | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-infra.postgresName" . }}
+  namespace: {{ include "agent-infra.namespace" . }}
+  labels:
+    app.kubernetes.io/component: postgres
+    {{- include "agent-infra.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: postgres
+        {{- include "agent-infra.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.temporal.postgres.image.repository }}:{{ .Values.temporal.postgres.image.tag }}"
+          env:
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ include "agent-infra.postgresName" . }}, key: user } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "agent-infra.postgresName" . }}, key: password } }
+            - name: POSTGRES_DB
+              valueFrom: { secretKeyRef: { name: {{ include "agent-infra.postgresName" . }}, key: database } }
+          ports:
+            - name: pg
+              containerPort: 5432
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-infra.postgresName" . }}
+  namespace: {{ include "agent-infra.namespace" . }}
+  labels:
+    app.kubernetes.io/component: postgres
+    {{- include "agent-infra.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/component: postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: pg
+{{- end }}
