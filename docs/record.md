@@ -591,4 +591,20 @@ NATS 事件总线 subject 级 ACL（R-3）✅
 - 实机越权实测（独立 nats-server + 客户端）为可选：用户选择跳过，步骤已写入 testing-guide 4.10
 
 
+事件回放工具（design-doc 8，cmd/replay-events）✅
+新增
+- cmd/replay-events/main.go：CLI 工具（读 JetStream 历史，非实时）
+  - 按 tenant（subject=agent-runtime.<t>.events.>）/ since / limit / json 过滤与输出
+  - scopeSummary 汇总事件来源
+- internal/eventbus/replay.go：ReplayJetStream(ctx, js, ReplayRequest)
+  - PullSubscribe + ManualAck + DeliverAll（历史）+ BindStream(stream)
+  - CloudEvent JSON 解码、Since 过滤、Sequence/Published（msg.Metadata）
+- internal/eventbus/replay_test.go：集成测试（依赖真实 NATS+JS，无则跳过）
+验证
+- go vet/build 全绿；TestReplayJetStream 在 VM 真实 NATS+JetStream 上 PASS
+  （发布 3 事件 → DeliverAll 回放全部 / tenant 过滤 / limit）
+- 发现并记录：运行中 operator/worker 的 eventbus 非 JetStream 模式（EnableJetStream 未开），
+  事件不落盘 → 需开启持久化才有历史可回放（design-doc 8 关键控制事件）
+
+
 

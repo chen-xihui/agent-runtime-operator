@@ -577,6 +577,36 @@ docker run -d --name nats-acl -p 4223:4223 -p 8223:8223 \
 - 客户端侧自检辅助：`ValidateTenantScope(prefix, tenant)` 返回本租户应限定的前缀
 - 实机越权实测需独立 nats-server（避免覆盖生产事件总线）；若验证环境仅单 nats 可跳过
 
+### 4.11 事件回放工具（`cmd/replay-events`，design-doc 8）
+
+> 基于 JetStream 持久化历史回放事件，用于问题排查与流程复现。与 `nats-inspect`（实时抓包）不同，此工具读**历史**（DeliverAll），非实时订阅。
+
+```bash
+# 1) 集成测试（依赖真实 NATS+JetStream；本机无 NATS 则跳过，可在 VM 上运行）：
+go test ./internal/eventbus/ -run TestReplayJetStream -v -count=1
+# 验证：发布 3 历史事件 → DeliverAll 回放全部 / 按 tenant 过滤 / limit 限制
+
+# 2) 交叉编译并传送到有 NATS+JetStream 的节点：
+go build -o /tmp/replay-events ./cmd/replay-events    # 或 GOOS=linux 交叉编译
+scp /tmp/replay-events root@<NODE>:/
+
+# 3) 用法：
+/root/replay-events --url=nats://127.0.0.1:4222                      # 回放全部
+/root/replay-events --url=nats://127.0.0.1:4222 --tenant=tenant-a    # 单租户
+/root/replay-events --url=nats://127.0.0.1:4222 --since=2026-09-01T00:00:00Z --json
+/root/replay-events --url=nats://127.0.0.1:4222 --limit=20
+```
+
+**验证要点**：
+- 事件须已持久化到 JetStream（`EnableJetStream: true`），否则无可回放历史
+- 回放经 `PullSubscribe + DeliverAll`（历史）+ `BindStream(stream)`，读全量持久化事件
+- 支持按 tenant / since / limit / json 过滤与输出
+- 实测：`TestReplayJetStream_ReplaysPublishedHistory` 在真实 NATS+JetStream 上 PASS
+
+**⚠️ 已知行为**：当前验证环境 operator/worker 的 eventbus 以**非 JetStream（临时）** 模式连接
+（`NewNatsBus{URL, SubjectPrefix}` 未设 `EnableJetStream`），事件不落盘，故运行中的编排无历史可回放；
+需 `EnableJetStream: true` + 持久化 stream（design-doc 8 关键控制事件）方可回放。
+
 ---
 
 ## 5. 常见问题排查
