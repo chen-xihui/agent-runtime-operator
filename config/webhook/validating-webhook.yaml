@@ -1,0 +1,108 @@
+# 准入 ValidatingWebhookConfiguration（design-doc 3.3/7.1）
+#
+# 部署前提：
+#   1. operator 以 --enable-webhooks 启动，webhook 服务监听 <NODE>:9443
+#      （证书放 /tmp/k8s-webhook-server/serving-certs，见 webhook.sh）
+#   2. 将下方 <caBundle> 替换为 webhook.sh 生成的 CA base64
+#   3. 将 <NODE_IP> 替换为 operator 所在节点 IP（可用节点 IP 或 Service DNS）
+#
+# 若 operator 以 Deployment 在集群内运行（推荐生产），改用 cert-manager 注入证书，
+# 并把 clientConfig.url 换成 service: { name: agent-runtime-operator-webhook, namespace: <ns>, path: /validate-* }。
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: agent-runtime-validating-webhook
+  annotations:
+    cert-manager.io/inject-ca-from: "" # 生产用 cert-manager 时填入
+webhooks:
+  - name: validate.agent.runtime.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    clientConfig:
+      url: "https://<NODE_IP>:9443/validate-agent-runtime-v1-agent"
+      caBundle: "<caBundle>"
+    rules:
+      - apiGroups: ["agent.runtime.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["agents"]
+    objectSelector: {}
+  - name: validate.workflow.runtime.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    clientConfig:
+      url: "https://<NODE_IP>:9443/validate-agent-runtime-v1-workflow"
+      caBundle: "<caBundle>"
+    rules:
+      - apiGroups: ["agent.runtime.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["workflows"]
+  - name: validate.workflowrun.runtime.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    clientConfig:
+      url: "https://<NODE_IP>:9443/validate-agent-runtime-v1-workflowrun"
+      caBundle: "<caBundle>"
+    rules:
+      - apiGroups: ["agent.runtime.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["workflowruns"]
+  - name: validate.tenant.runtime.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    clientConfig:
+      url: "https://<NODE_IP>:9443/validate-agent-runtime-v1-tenant"
+      caBundle: "<caBundle>"
+    rules:
+      - apiGroups: ["agent.runtime.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["tenants"]
+  - name: validate.mcpendpoint.runtime.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    clientConfig:
+      url: "https://<NODE_IP>:9443/validate-agent-runtime-v1-mcpendpoint"
+      caBundle: "<caBundle>"
+    rules:
+      - apiGroups: ["agent.runtime.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["mcpendpoints"]
+  - name: validate.toolbinding.runtime.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    clientConfig:
+      url: "https://<NODE_IP>:9443/validate-agent-runtime-v1-toolbinding"
+      caBundle: "<caBundle>"
+    rules:
+      - apiGroups: ["agent.runtime.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["toolbindings"]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: agent-runtime-mutating-webhook
+webhooks:
+  - name: mutate.agent.runtime.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    clientConfig:
+      url: "https://<NODE_IP>:9443/mutate-agent-runtime-v1-agent"
+      caBundle: "<caBundle>"
+    rules:
+      - apiGroups: ["agent.runtime.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["agents"]

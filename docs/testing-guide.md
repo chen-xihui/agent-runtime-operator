@@ -470,6 +470,49 @@ cat /dev/kvm  # 存在设备即支持
 - 协议双向一致：非法 payload 被 mock 拒绝（400）
 - **唯一无法模拟**：内核真正引导（需真实 `/dev/kvm` + vmlinux/rootfs 镜像）→ 见 **`docs/firecracker-kvm-deployment.md`（真实 KVM 节点部署清单，方案 B）**
 
+### 4.8 Webhook 准入控制（admission）
+
+> 前置：本机 Go 环境即可做核心校验逻辑单测（无需集群）；集群端到端需部署
+> WebhookServer（TLS）+ `ValidatingWebhookConfiguration`（见 `config/webhook/`）。
+
+```bash
+# 1) 本地核心校验单测（纯函数，无需集群/KVM）
+go test ./internal/admission/... -v -count=1
+# 覆盖：Agent(必填image/合法runtime/networkPolicy/request≤limit/默认值注入)，
+#       Workflow(DAG 无环/entrypoint 存在/依赖存在/agent必填)，
+#       WorkflowRun(workflowRef必填)，Tenant(配额 quantity 合法)，
+#       MCPEndpoint(transport)，ToolBinding(去重/R-4)
+
+# 2) 集群端到端部署（真实 KVM/节点上）
+#    ① 生成证书并放置 operator 侧：
+bash config/webhook/webhook.sh <OPERATOR_NODE_IP>
+#    → 生成 ca.crt/tls.crt/tls.key 到 config/webhook/certs，并拷贝到 /tmp/k8s-webhook-server/serving-certs/
+#    ② 用生成的 caBundle 替换 config/webhook/validating-webhook.yaml 的 <caBundle>/<NODE_IP>
+#    ③ 以 --enable-webhooks 重启 operator（监听 :9443）
+#    ④ 应用 Webhook 配置：
+kubectl apply -f config/webhook/validating-webhook.yaml
+
+# 3) 验证准入拒绝（非法 Agent 应被 webhook 拒绝）
+kubectl apply -f - <<'EOF'
+apiVersion: agent.runtime.io/v1
+kind: Agent
+metadata: {name: bad, namespace: tenant-a}
+spec:
+  runtime: {class: "not-a-runtime"}
+  image: "busybox"
+  mcp: {allowedTools: [], endpoints: []}
+  security: {runAsNonRoot: false, networkPolicy: "open-internet"}
+EOF
+# 期望：Error ... unsupported runtime class ... （webhook 拒绝）
+```
+
+**验证要点**：
+- 校验逻辑为**纯函数**（`internal/admission/validate.go`），可本地全量单测，不依赖集群
+- Agent：必填 image、runtime.class ∈ {gvisor,firecracker,kata}、networkPolicy 白名单、request≤limit
+- Workflow：复用 orchestrator DAG 校验（环/缺失依赖/entrypoint 有效性）
+- Agent mutating 默认值：runtime.class 空→gvisor、runAsNonRoot 空→true（安全默认）
+- 集群端到端需 WebhookServer（`--enable-webhooks` + 证书）+ Webhook 配置（`config/webhook/`）
+
 ---
 
 ## 5. 常见问题排查
@@ -487,6 +530,8 @@ cat /dev/kvm  # 存在设备即支持
 | WorkflowRun 一直 RUNNING（事件不推进） | worker 只发 NODE_STARTED 未发 NODE_SUCCEEDED | worker Dispatch 同时发 NODE_SUCCEEDED 事件 |
 | WorkflowRun 事件被丢弃（events=0） | runID 语义不匹配（事件是 WorkflowID，status.runId 是 Temporal RunID） | 用修复后的二进制（`status.workflowId` 匹配）；`cmd/nats-inspect` 抓包确认 |
 | WorkflowRun `spec.workflowId` 字段无效 | CRD 缺字段 | 更新 `config/crd/agent.runtime.io_workflowruns.yaml` 并 `kubectl apply` |
+| 应用 webhook 配置后资源无法创建 | WebhookServer 未启/证书不匹配 | 确认 operator `--enable-webhooks` 启动且 `/tmp/k8s-webhook-server/serving-certs` 有 tls.crt/key；重跑 `webhook.sh` 刷新 caBundle |
+| webhook 报 `x509: certificate ...` | caBundle 与服务端证书 CA 不一致 | 用同一 `webhook.sh` 生成的 ca.crt base64 填 ValidatingWebhookConfiguration |
 | API Server 启动 `load kubeconfig: ...` | 未传 `--kubeconfig` 且不在集群内 | 加 `--kubeconfig=/root/.kube/config`（本集群 api-server 跑在宿主机，非 Pod） |
 | API Server 审计 `/api/v1/audit` 永远空数组 | 未配 `--nats-url`（默认 NoopStore） | 加 `--nats-url=nats://127.0.0.1:4222` 接入 JetStream 审计存储 |
 | API Server `bind: address already in use` | 8080 被 Operator metrics 占用 | `--addr=:8090`（Operator 默认 `--metrics-bind-address=:8080`） |

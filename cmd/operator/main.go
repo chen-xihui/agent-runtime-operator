@@ -15,6 +15,7 @@ import (
 
 	agentv1 "github.com/example/agent-runtime-operator/api/v1"
 	"github.com/example/agent-runtime-operator/internal/a2a"
+	"github.com/example/agent-runtime-operator/internal/admission"
 	"github.com/example/agent-runtime-operator/internal/controllers"
 	"github.com/example/agent-runtime-operator/internal/eventbus"
 	"github.com/example/agent-runtime-operator/internal/mcp"
@@ -23,6 +24,7 @@ import (
 	"github.com/example/agent-runtime-operator/internal/registration"
 	"github.com/example/agent-runtime-operator/internal/sandbox"
 	"go.temporal.io/sdk/client"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 var (
@@ -58,6 +60,8 @@ func main() {
 	flag.StringVar(&temporalTaskQueue, "temporal-task-queue", "agent-orchestration", "Temporal task queue.")
 	var natsURL string
 	flag.StringVar(&natsURL, "nats-url", "", "NATS server URL (e.g. nats://127.0.0.1:4222). Enables event-driven orchestration.")
+	var enableWebhooks bool
+	flag.BoolVar(&enableWebhooks, "enable-webhooks", false, "Enable admission webhooks (validating + mutating defaulting). Requires WebhookServer TLS certs (see config/webhook).")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -66,7 +70,8 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	cfg := ctrl.GetConfigOrDie()
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+
+	mgrOptions := ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
@@ -74,10 +79,27 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "a9b7c6d5.agent.runtime.io",
-	})
+	}
+	// 准入 Webhook（design-doc 3.3/7.1）：仅在显式开启 + 配置证书时启用
+	if enableWebhooks {
+		mgrOptions.WebhookServer = webhook.NewServer(webhook.Options{
+			Port:    9443,
+			CertDir: "/tmp/k8s-webhook-server/serving-certs",
+		})
+	}
+	mgr, err := ctrl.NewManager(cfg, mgrOptions)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
+	}
+
+	// 注册准入校验/默认值 webhook（需 WebhookServer 与集群注入的 serving cert）
+	if enableWebhooks {
+		if err := admission.SetupWebhookWithManager(mgr, true); err != nil {
+			setupLog.Error(err, "unable to setup admission webhooks")
+			os.Exit(1)
+		}
+		setupLog.Info("admission webhooks enabled")
 	}
 
 	sandboxCfg := &sandbox.Config{

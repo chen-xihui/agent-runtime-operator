@@ -535,4 +535,27 @@ API Server 补齐编排执行/取消/事件/删除端点（design-doc 6.1 对齐
 - 全部新端点集群实测通过 ✅
 
 
+Webhook 准入控制（design-doc 3.3/7.1）✅
+新增（internal/admission/）
+- validate.go：纯函数校验 + 默认值注入（无依赖，任意调用方可复用）
+  - Agent：必填 image / runtime.class∈{gvisor,firecracker,kata} / networkPolicy 白名单 / resource request≤limit / MCP 引用格式 / maxLifetimeMin≥0
+  - DefaultAgent：runtime.class 空→gvisor、runAsNonRoot 空→true（安全默认值）
+  - Sandbox：agentRef 必填 / runtimeClass 合法
+  - Workflow：复用 orchestrator 的 DAG 校验（entrypoint 有效性/缺失依赖/环/agent-action 必填）+ entrypoint∈nodes
+  - WorkflowRun：workflowRef 必填；Tenant：配额 quantity 合法、max≥0
+  - MCPEndpoint：address 必填/transport 白名单；ToolBinding：非空/去重/rateLimit≥0（R-4）
+- webhook.go：controller-runtime CustomValidator/CustomDefaulter 接入层（各类型 Create/Update 调纯函数）
+- manager.go：SetupWebhookWithManager(mgr, enableMutating) 注册 6 校验 + Agent mutating
+集成（cmd/operator/main.go）
+- --enable-webhooks 开关：配置 WebhookServer(:9443, certDir /tmp/k8s-webhook-server/serving-certs)，注册 webhook
+部署资产（config/webhook/）
+- webhook.sh：openssl 自签名 CA + 服务端证书，输出 caBundle 与 tls.crt/key（放置位置）
+- validating-webhook.yaml：ValidatingWebhookConfiguration（6 类型）+ MutatingWebhookConfiguration（Agent defaulting）
+测试
+- internal/admission/validate_test.go：14 用例（正/反例全绿）
+验证状态
+- 校验逻辑纯本地全量单测通过（无集群依赖）；全量 build/vet/test 通过 ✅
+- 集群端到端（WebhookServer + Webhook 配置）为可选部署，待 KVM/具备注入证书的节点验证
+
+
 
