@@ -1,0 +1,40 @@
+# Prometheus 采集配置（agent-runtime-operator 可观测性，M5）
+# 采集 operator 暴露的 /metrics（controller-runtime + internal/metrics 注册的全部指标）。
+#
+# 用法：
+#   # 进程式 operator（验证环境）：metrics 在 <host>:8080/metrics（metrics-bind-address 默认 :8080）
+#   # 集群内 operator（Helm chart）：metrics 端口见 manager；经 Service/ServiceMonitor 采集
+#
+# 与 Grafana dashboard（config/grafana/agent-runtime-dashboard.json）配合：
+#   agent_orchestration_runs_started_total
+#   agent_orchestration_run_duration_seconds_bucket
+#   agent_orchestration_events_total
+#   agent_sandbox_state_transitions_total
+#   agent_sandbox_active
+#   agent_tool_calls_total          (DLP)
+#   agent_mcp_errors_total
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # --- agent-runtime-operator 控制面指标 ---
+  - job_name: agent-runtime-operator
+    metrics_path: /metrics
+    static_configs:
+      # 进程式 operator（本仓库验证环境，192.168.0.31，operator metrics 于 :8080）
+      - targets: ["192.168.0.31:8080"]
+        labels:
+          component: operator
+    # --- 若 operator 在集群内（Helm chart），改用 kubernetes_sd 或 ServiceMonitor ---
+    # relabel_configs:
+    #   - source_labels: [__meta_kubernetes_pod_label_control_plane]
+    #     regex: agent-infra-operator
+    #     action: keep
+
+  # --- api-server 指标（若暴露）---
+  # - job_name: agent-runtime-api-server
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["192.168.0.31:8090"]
+  #       labels: { component: api-server }

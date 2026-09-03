@@ -607,6 +607,37 @@ scp /tmp/replay-events root@<NODE>:/
 （`NewNatsBus{URL, SubjectPrefix}` 未设 `EnableJetStream`），事件不落盘，故运行中的编排无历史可回放；
 需 `EnableJetStream: true` + 持久化 stream（design-doc 8 关键控制事件）方可回放。
 
+### 4.12 可观测性 / Grafana（M5，config/prometheus + config/grafana）
+
+> operator 经 controller-runtime 暴露 `/metrics`（`internal/metrics` 注册的 Prometheus 指标）。
+
+```bash
+# 1) 指标已由 operator 暴露（验证环境 :8080/metrics）：
+curl -s http://192.168.0.31:8080/metrics | grep -E '^agent_' | head   # 应有 agent_* 指标
+
+# 2) Prometheus 采集（config/prometheus/prometheus.yaml）：
+#    配置指向 operator :8080（进程式）或 Service/ServiceMonitor（集群内），见文件注释
+
+# 3) Grafana 导入 dashboard（config/grafana/agent-runtime-dashboard.json）：
+#    Grafana → Dashboards → Import → 上传该 JSON（数据源需 prometheus uid=${DS_PROMETHEUS}）
+```
+
+**面板与 PromQL（全部引用真实指标）**：
+| 面板 | PromQL |
+|------|--------|
+| 编排运行启动速率（按工作流） | `rate(agent_orchestration_runs_started_total)` by workflow |
+| 编排耗时 p95 | `histogram_quantile(0.95, rate(..._duration_seconds_bucket))` |
+| 编排事件速率（按类型） | `rate(agent_orchestration_events_total)` by type |
+| 活跃沙箱（按运行时） | `agent_sandbox_active` |
+| 沙箱状态迁移速率 | `rate(agent_sandbox_state_transitions_total)` by from,to |
+| 工具调用速率（DLP） | `rate(agent_tool_calls_total)` by tool,result |
+| MCP 错误速率 | `rate(agent_mcp_errors_total)` |
+
+**验证要点**：
+- dashboard JSON 合法，PromQL 全部命中 `internal/metrics/metrics.go` 定义的指标
+- 7 个指标：runs_started/duration(hist)/events/sandbox_transitions/sandbox_active/tool_calls(DLP)/mcp_errors
+- scrape 配置：进程式 operator 指向 `:8080/metrics`；集群内用 ServiceMonitor
+
 ---
 
 ## 5. 常见问题排查

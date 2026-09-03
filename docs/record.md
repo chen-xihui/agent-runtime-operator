@@ -607,4 +607,17 @@ NATS 事件总线 subject 级 ACL（R-3）✅
   事件不落盘 → 需开启持久化才有历史可回放（design-doc 8 关键控制事件）
 
 
+可观测性 / Grafana（M5，config/prometheus + config/grafana）✅
+新增
+- config/grafana/agent-runtime-dashboard.json：Grafana dashboard（7 面板，3 行分组）
+  - 编排：运行启动速率 by workflow / 耗时 p95(hist) / 事件速率 by type
+  - 沙箱：活跃数 by runtime / 状态迁移速率 by from,to
+  - 工具/安全：工具调用速率 by tool,result(DLP) / MCP 错误速率
+- config/prometheus/prometheus.yaml：scrape 配置（operator :8080/metrics；集群内注 ServiceMonitor）
+- 覆盖 internal/metrics/metrics.go 全部 7 个指标（含 DLP tool_calls/mcp_errors）
+验证
+- dashboard 所有 PromQL 交叉核对命中真实指标名（metrics.go）
+- 进程式 operator 已在 :8080/metrics 暴露 agent_* 指标（验证环境）
+
+
 
