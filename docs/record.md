@@ -575,4 +575,20 @@ Helm chart（design-doc 9.2，charts/agent-infra）✅
 - 真实部署需镜像仓库 + CRD 已装（helm install 前置）
 
 
+NATS 事件总线 subject 级 ACL（R-3）✅
+新增（internal/eventbus/acl.go）
+- BuildACLConfig(spec)：生成 nats-server.conf authorization 段
+  - operator/worker 账号 publish/subscribe [">"]（全权限）
+  - 每租户账号仅 [prefix.tenant.events.>, _INBOX.>, 可选 $JS.API.>/$JS.ACK.>]
+- RenderACL(spec, enableJetStream)：完整可运行 conf（port/httd/jetstream + authorization）
+- ValidateTenantScope(prefix, tenant)：返回本租户应限定前缀（客户端侧自检）
+- quoteList：去重+排序，确定性输出
+- 样例 conf：config/nats/nats-server-acl.conf（operator + tenant-a/b）
+单测（internal/eventbus/acl_test.go）
+- HasOperatorAndTenants / OperatorFullAccess / TenantScoped / NoTenantCrossScope / Deterministic / TenantScope / RenderRunnable 全绿
+验证状态
+- 单测全绿（含关键 R-3：无跨租户 subject 合并）
+- 实机越权实测（独立 nats-server + 客户端）为可选：用户选择跳过，步骤已写入 testing-guide 4.10
+
+
 

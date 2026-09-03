@@ -546,6 +546,37 @@ helm upgrade agent-infra ./charts/agent-infra --namespace agent-runtime-system \
 - 组件经 `enabled` 开关独立控制（operator/worker/nats/temporal/postgres）
 - 真实部署需：镜像推送到集群可拉取的仓库 + CRD 已安装（`make install`）
 
+### 4.10 NATS 事件总线 subject 级 ACL（R-3）
+
+> 落地设计约束 R-3：各租户 Relay 使用独立 NATS user/token + subject 级 ACL，
+> 只能发布/订阅本租户 subject（`agent-runtime.<tenant>.events.>`）。
+
+```bash
+# 1) 本地单测（校验 ACL 生成逻辑，无需集群/NATS server）
+go test ./internal/eventbus/... -run 'ACL|TenantScope' -v -count=1
+# 覆盖：operator 全权限(">") / 每租户仅本租户 events.> / 无跨租户合并 / 确定性输出
+
+# 2) 生成的 ACL conf 样例（config/nats/nats-server-acl.conf）
+#    operator 账号全权限；tenant-a/tenant-b 仅限本租户 agent-runtime.<t>.events.>
+
+# 3) 实机越权验证（可选，需独立 nats-server，避免干扰生产 4222）
+#    ① 启动带 ACL conf 的 server（独立端口，如 4223）
+docker run -d --name nats-acl -p 4223:4223 -p 8223:8223 \
+  -v /root/nats-server-acl.conf:/conf/acl.conf nats:2.10 -js -p 4223 -m 8223 -c /conf/acl.conf
+#    ② 用各账号凭据连接实测：
+#       - operator/op-secret    → 可 pub 任意 subject
+#       - tenant-a/a-secret     → pub agent-runtime.tenant-a.events.> 成功
+#       - tenant-a/a-secret     → pub agent-runtime.tenant-b.events.> 被拒（R-3 强制）
+#    ③ 清理：docker rm -f nats-acl
+```
+
+**验证要点**：
+- ACL 配置由 `internal/eventbus/acl.go`（BuildACLConfig/RenderACL）生成，确定性强
+- operator 账号 `publish: [">"]` 全权限；每租户账号仅 `agent-runtime.<tenant>.events.>`
+- 关键 R-3：单租户权限列表**不含其它租户**事件 subject（单测断言）
+- 客户端侧自检辅助：`ValidateTenantScope(prefix, tenant)` 返回本租户应限定的前缀
+- 实机越权实测需独立 nats-server（避免覆盖生产事件总线）；若验证环境仅单 nats 可跳过
+
 ---
 
 ## 5. 常见问题排查
