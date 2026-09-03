@@ -45,6 +45,7 @@ func (s *Server) Handler() http.Handler {
 	// Agent
 	mux.HandleFunc("GET /api/v1/tenants/{tenant}/agents", s.listAgents)
 	mux.HandleFunc("POST /api/v1/tenants/{tenant}/agents", s.createAgent)
+	mux.HandleFunc("DELETE /api/v1/tenants/{tenant}/agents/{name}", s.deleteAgent)
 
 	// Sandbox
 	mux.HandleFunc("GET /api/v1/tenants/{tenant}/sandboxes/{name}", s.getSandbox)
@@ -53,7 +54,11 @@ func (s *Server) Handler() http.Handler {
 
 	// Workflow
 	mux.HandleFunc("POST /api/v1/tenants/{tenant}/workflows", s.createWorkflow)
+	mux.HandleFunc("GET /api/v1/tenants/{tenant}/workflowruns", s.listWorkflowRuns)
+	mux.HandleFunc("POST /api/v1/tenants/{tenant}/workflowruns", s.runWorkflow)
 	mux.HandleFunc("GET /api/v1/tenants/{tenant}/workflowruns/{name}", s.getWorkflowRun)
+	mux.HandleFunc("POST /api/v1/tenants/{tenant}/workflowruns/{name}/cancel", s.cancelWorkflowRun)
+	mux.HandleFunc("GET /api/v1/tenants/{tenant}/workflowruns/{name}/events", s.getWorkflowRunEvents)
 
 	// Audit（DLP 审计查询）
 	mux.HandleFunc("GET /api/v1/audit", s.queryAudit)
@@ -134,6 +139,15 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, a)
 }
 
+func (s *Server) deleteAgent(w http.ResponseWriter, r *http.Request) {
+	tenant, name := r.PathValue("tenant"), r.PathValue("name")
+	if err := s.sdk.DeleteAgent(r.Context(), tenant, name); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "agent": name, "tenant": tenant})
+}
+
 // ===================== Sandbox =====================
 
 func (s *Server) getSandbox(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +206,71 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, run)
+}
+
+func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
+	tenant := r.PathValue("tenant")
+	list, err := s.sdk.ListWorkflowRuns(r.Context(), tenant)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// runWorkflowBody 触发执行的请求体（RunWorkflow，design-doc 6.1）
+type runWorkflowBody struct {
+	Workflow string                 `json:"workflow"`
+	Ref      string                 `json:"ref"`
+	Input    map[string]interface{} `json:"input"`
+}
+
+// runWorkflow 触发一次编排执行（POST /workflowruns）→ 创建 WorkflowRun，返回 run（含 name）
+func (s *Server) runWorkflow(w http.ResponseWriter, r *http.Request) {
+	tenant := r.PathValue("tenant")
+	var body runWorkflowBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body: " + err.Error()})
+		return
+	}
+	ref := body.Ref
+	if ref == "" {
+		ref = body.Workflow // 兼容 workflow 字段
+	}
+	if ref == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workflow reference required"})
+		return
+	}
+	run, err := s.sdk.CreateWorkflowRun(r.Context(), tenant, ref, body.Input)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, run)
+}
+
+// cancelWorkflowRun 取消一次执行（POST /workflowruns/{name}/cancel）→ 标记 CANCELLED 触发引擎 Cancel
+func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	tenant, name := r.PathValue("tenant"), r.PathValue("name")
+	if err := s.sdk.CancelWorkflowRun(r.Context(), tenant, name); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cancel requested", "run": name, "tenant": tenant})
+}
+
+// getWorkflowRunEvents 拉取执行事件流（GET /workflowruns/{name}/events，N5）
+func (s *Server) getWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
+	tenant, name := r.PathValue("tenant"), r.PathValue("name")
+	events, err := s.sdk.GetWorkflowRunEvents(r.Context(), tenant, name)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if events == nil {
+		events = []sdk.WorkflowEvent{}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"run": name, "tenant": tenant, "events": events})
 }
 
 // ===================== Audit =====================

@@ -499,4 +499,31 @@ Firecracker 协议级端到端验证（方案 A，无 KVM 硬件）✅
 - 真实 KVM 节点部署清单见 docs/firecracker-kvm-deployment.md（方案 B）
 
 
+API Server 补齐编排执行/取消/事件/删除端点（design-doc 6.1 对齐）✅
+
+已实现
+- SDK（sdk/client.go）新增：
+  - DeleteAgent（删除 Agent，关联 Sandbox 回收）
+  - ListWorkflowRuns（列出租户内所有运行）
+  - CancelWorkflowRun（写 status.phase=CANCELLED → reconciler 触发 Temporal Engine.Cancel，幂等）
+  - GetWorkflowRunEvents（R-5 低频快照派生节点级事件：nodeResults→NODE_SUCCEEDED/FAILED + 终态→WORKFLOW_COMPLETED）
+- API Server（internal/apiserver/server.go）新增 REST 端点：
+  - POST /api/v1/tenants/{t}/workflowruns   触发执行（RunWorkflow，body: ref/input，返回 run 含 name）
+  - GET  /api/v1/tenants/{t}/workflowruns   列表
+  - POST /api/v1/tenants/{t}/workflowruns/{name}/cancel   取消执行
+  - GET  /api/v1/tenants/{t}/workflowruns/{name}/events   拉事件流（N5 路径对齐）
+  - DELETE /api/v1/tenants/{t}/agents/{name}  删除 Agent
+- 错误映射：cancel 缺 ref→400、不存在→404
+
+单元测试
+- apiserver：RunWorkflowLifecycle（触发/列表/cancel 后 phase=CANCELLED/events）、DeleteAgent（删除后空列表 + 404）、RunWorkflow_Validation（缺 ref/非法 body→400）
+- sdk：DeleteAgent、WorkflowRunCancelAndEvents（事件派生 + cancel 幂等 + WORKFLOW_COMPLETED）
+- 测试 fake client 启用 WorkflowRun status subresource（Cancel 经 Status().Update 写 phase）
+- 全部 16 包 build / vet / test 通过 ✅
+
+说明
+- cancel 语义：CRD status 为只读快照，取消意图经 status.phase=CANCELLED 由 reconciler 识别并调 Temporal Cancel
+- events 语义：CRD 无事件历史（R-5），以 status 快照派生节点级事件，准实时；精确事件流需从事件总线拉取（后续扩展）
+
+
 

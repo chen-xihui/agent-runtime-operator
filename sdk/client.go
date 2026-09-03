@@ -90,6 +90,13 @@ func (s *Client) ListAgents(ctx context.Context, ns string) (*agentv1.AgentList,
 	return l, nil
 }
 
+// DeleteAgent 删除 Agent（关联 Sandbox 由回收逻辑处理）
+func (s *Client) DeleteAgent(ctx context.Context, ns, name string) error {
+	return s.client.Delete(ctx, &agentv1.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+	})
+}
+
 // ===================== Sandbox =====================
 
 // GetSandbox 获取 Sandbox
@@ -164,6 +171,83 @@ func (s *Client) GetWorkflowRun(ctx context.Context, ns, name string) (*agentv1.
 		return nil, err
 	}
 	return run, nil
+}
+
+// ListWorkflowRuns 列出租户内所有 WorkflowRun
+func (s *Client) ListWorkflowRuns(ctx context.Context, ns string) (*agentv1.WorkflowRunList, error) {
+	l := &agentv1.WorkflowRunList{}
+	if err := s.client.List(ctx, l, client.InNamespace(ns)); err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
+// CancelWorkflowRun 取消编排运行。
+// 说明：CRD status 为只读快照，取消意图由 reconciler 识别——将 status.phase 置为
+// CANCELLED 后，WorkflowRunReconciler 会调用 Temporal 引擎 Cancel（design-doc 6.1 CancelRun）。
+func (s *Client) CancelWorkflowRun(ctx context.Context, ns, name string) error {
+	run := &agentv1.WorkflowRun{}
+	if err := s.client.Get(ctx, types.NamespacedName{Name: name, Namespace: ns}, run); err != nil {
+		return err
+	}
+	if run.Status.Phase == agentv1.PhaseRunCancelled {
+		return nil // 幂等：已取消
+	}
+	run.Status.Phase = agentv1.PhaseRunCancelled
+	return s.client.Status().Update(ctx, run)
+}
+
+// WorkflowEvent 编排运行事件（R-5 低频快照派生，准实时）
+type WorkflowEvent struct {
+	RunID     string `json:"runId"`
+	Node      string `json:"node"`
+	Type      string `json:"type"` // NODE_SUCCEEDED / NODE_FAILED / NODE_STARTED / WORKFLOW_COMPLETED
+	State     string `json:"state,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+}
+
+// GetWorkflowRunEvents 返回运行的事件流。
+// 设计文档 GetEvents 语义：从事件总线拉取精确事件流（N5）；此处 CRD 无事件历史，
+// 以 status 只读快照（nodeResults/currentNode/phase）派生节点级事件，供准实时查询。
+func (s *Client) GetWorkflowRunEvents(ctx context.Context, ns, name string) ([]WorkflowEvent, error) {
+	run, err := s.GetWorkflowRun(ctx, ns, name)
+	if err != nil {
+		return nil, err
+	}
+	var events []WorkflowEvent
+	// 节点结果 → 终态事件
+	for node, v := range run.Status.NodeResults {
+		evt := WorkflowEvent{RunID: run.Status.RunID, Node: node}
+		if m, ok := v.(map[string]interface{}); ok {
+			if st, ok := m["state"].(string); ok {
+				switch st {
+				case "SUCCEEDED":
+					evt.Type = "NODE_SUCCEEDED"
+					evt.State = st
+				case "FAILED":
+					evt.Type = "NODE_FAILED"
+					evt.State = st
+				default:
+					evt.Type = "NODE_"+st
+					evt.State = st
+				}
+			}
+		}
+		events = append(events, evt)
+	}
+	// 运行终态补充 WORKFLOW_COMPLETED
+	switch run.Status.Phase {
+	case agentv1.PhaseRunSucceeded, agentv1.PhaseRunFailed, agentv1.PhaseRunCancelled:
+		events = append(events, WorkflowEvent{
+			RunID: run.Status.RunID,
+			Type:  "WORKFLOW_COMPLETED",
+			State: run.Status.Phase,
+		})
+	}
+	if events == nil {
+		events = []WorkflowEvent{}
+	}
+	return events, nil
 }
 
 func boolPtr(b bool) *bool { return &b }

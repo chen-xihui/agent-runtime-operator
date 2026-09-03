@@ -348,14 +348,25 @@ curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/sandboxes/sb-reviewer | 
 curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/sandboxes/sb-reviewer/resume
 curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/sandboxes/sb-reviewer | grep -o '"phase":"[A-Za-z]*"'  # Running
 
-# 6) 通过 REST 创建 Workflow + 触发 WorkflowRun
+# 6) 通过 REST 创建 Workflow + 触发 WorkflowRun（POST /workflowruns 现已支持）
 curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflows \
   -H 'Content-Type: application/json' \
   -d '{"metadata":{"name":"api-wf"},"spec":{"entrypoint":"analyze","nodes":[{"id":"analyze","agent":"analyzer","action":"analyze_repo"},{"id":"review","agent":"reviewer","action":"review_code","dependsOn":["analyze"]}]}}'
-# WorkflowRun 创建（API Server 无该端点，用 kubectl 触发，见 4.4）后，经 REST 查询：
-curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns/api-run-1 | head -c 400   # status.phase=SUCCEEDED
+# 触发执行 → 返回 run（含 name）
+RUN=$(curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns \
+  -H 'Content-Type: application/json' -d '{"ref":"api-wf","input":{"tenantId":"tenant-api"}}' | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "run=$RUN"
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns/$RUN | head -c 400   # status.phase=SUCCEEDED（编排完成后）
+# 列表 + 取消 + 事件流
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns                     # list
+curl -s -X POST http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns/$RUN/cancel  # cancel（phase→CANCELLED）
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/workflowruns/$RUN/events          # 节点事件流
 
-# 7) DLP 审计查询（NATS JetStream；需先有审计记录，如 MCP Proxy 工具调用/网络出网）
+# 7) 删除 Agent（DELETE /agents/{name}）
+curl -s -X DELETE http://127.0.0.1:8090/api/v1/tenants/tenant-api/agents/reviewer
+curl -s http://127.0.0.1:8090/api/v1/tenants/tenant-api/agents   # 列表应为空
+
+# 8) DLP 审计查询（NATS JetStream；需先有审计记录，如 MCP Proxy 工具调用/网络出网）
 curl -s "http://127.0.0.1:8090/api/v1/audit?tenant=tenant-api&limit=10"   # 期望 {"records":[...]}（无记录为空数组）
 ```
 
@@ -363,7 +374,11 @@ curl -s "http://127.0.0.1:8090/api/v1/audit?tenant=tenant-api&limit=10"   # 期�
 - `/healthz` 正常；`/api/v1/tenants` 与 `kubectl` 回读一致（SDK 直连 CRD）
 - 通过 REST 创建租户/Agent 能触发控制器调谐（与 kubectl apply 等价）
 - Sandbox suspend/resume 经 REST 调用等价于 `kubectl patch`
-- `--nats-url` 使 `/api/v1/audit` 可查询 JetStream 审计记录（实测：写入 `audit.tenant-api.tool_call` 后按 tenant/action 过滤均命中）
+- **`POST /workflowruns` 触发执行**（RunWorkflow，对齐 design-doc 6.1，返回 run 含 name）
+- **`POST /workflowruns/{id}/cancel`** 取消（写 status.phase=CANCELLED，reconciler 触发 Temporal Cancel）
+- **`GET /workflowruns/{id}/events`** 拉事件流（R-5 低频快照派生节点级事件，N5 语义）
+- **`DELETE /agents/{name}`** 删除 Agent
+- `--nats-url` 使 `/api/v1/audit` 可查询 JetStream 审计记录
 - 不存在的资源经 REST 返回 `404`（错误处理正常）
 
 ### 4.6 插件市场（Plugin sample 端到端）

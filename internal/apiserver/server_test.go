@@ -22,7 +22,11 @@ func testServer(t *testing.T, objs ...client.Object) *httptest.Server {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	_ = v1.AddToScheme(scheme)
-	b := fake.NewClientBuilder().WithScheme(scheme).Build()
+	// 启用 status subresource（CancelWorkflowRun 经 Status().Update 写 phase）
+	b := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&v1.WorkflowRun{}).
+		Build()
 	for _, o := range objs {
 		_ = b.Create(context.Background(), o)
 	}
@@ -139,6 +143,95 @@ func TestServer_BadRequest(t *testing.T) {
 	}
 	// 非法 body → 400
 	resp, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants", `invalid-json`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid body status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestServer_RunWorkflowLifecycle(t *testing.T) {
+	ts := testServer(t)
+	// 建租户 + workflow
+	_, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants", `{"metadata":{"name":"tenant-wf"}}`)
+	_, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants/tenant-wf/workflows",
+		`{"metadata":{"name":"wf-1"},"spec":{"entrypoint":"analyze","nodes":[{"id":"analyze","agent":"a1","action":"go"}]}}`)
+
+	// 触发执行（POST /workflowruns）→ 201 + 返回 run
+	resp, out := doReq(t, "POST", ts.URL+"/api/v1/tenants/tenant-wf/workflowruns", `{"ref":"wf-1","input":{"tenantId":"tenant-wf"}}`)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("run workflow status = %d, want 201", resp.StatusCode)
+	}
+	meta := out["metadata"].(map[string]interface{})
+	name, _ := meta["name"].(string)
+	if name == "" {
+		t.Fatalf("run name empty: %v", out)
+	}
+
+	// 列表包含该 run
+	resp, out = doReq(t, "GET", ts.URL+"/api/v1/tenants/tenant-wf/workflowruns", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list runs status = %d", resp.StatusCode)
+	}
+	if items, ok := out["items"].([]interface{}); !ok || len(items) != 1 {
+		t.Fatalf("runs = %v, want 1", out)
+	}
+
+	// cancel（POST .../cancel）→ 200，status.phase 置 CANCELLED
+	resp, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants/tenant-wf/workflowruns/"+name+"/cancel", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("cancel status = %d", resp.StatusCode)
+	}
+	resp, out = doReq(t, "GET", ts.URL+"/api/v1/tenants/tenant-wf/workflowruns/"+name, "")
+	st := out["status"].(map[string]interface{})
+	if st["phase"] != "CANCELLED" {
+		t.Fatalf("phase after cancel = %v, want CANCELLED", st["phase"])
+	}
+
+	// events（含 WORKFLOW_COMPLETED，因为已取消）
+	resp, out = doReq(t, "GET", ts.URL+"/api/v1/tenants/tenant-wf/workflowruns/"+name+"/events", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("events status = %d", resp.StatusCode)
+	}
+	if evs, ok := out["events"].([]interface{}); !ok || len(evs) == 0 {
+		t.Fatalf("events empty: %v", out)
+	}
+}
+
+func TestServer_DeleteAgent(t *testing.T) {
+	ts := testServer(t)
+	_, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants", `{"metadata":{"name":"tenant-del"}}`)
+	_, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants/tenant-del/agents", `{"metadata":{"name":"gone"},"spec":{"image":"busybox"}}`)
+
+	// 删除 Agent → 200
+	resp, _ := doReq(t, "DELETE", ts.URL+"/api/v1/tenants/tenant-del/agents/gone", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete agent status = %d", resp.StatusCode)
+	}
+	// 删除后列表应为空
+	resp, out := doReq(t, "GET", ts.URL+"/api/v1/tenants/tenant-del/agents", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list agents status = %d", resp.StatusCode)
+	}
+	if items, ok := out["items"].([]interface{}); !ok || len(items) != 0 {
+		t.Fatalf("agents after delete = %v, want 0", out)
+	}
+	// 删除不存在的 → 404
+	resp, _ = doReq(t, "DELETE", ts.URL+"/api/v1/tenants/tenant-del/agents/ghost", "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete ghost status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestServer_RunWorkflow_Validation(t *testing.T) {
+	ts := testServer(t)
+	_, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants", `{"metadata":{"name":"tenant-v"}}`)
+
+	// 缺 workflow ref → 400
+	resp, _ := doReq(t, "POST", ts.URL+"/api/v1/tenants/tenant-v/workflowruns", `{"input":{}}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing ref status = %d, want 400", resp.StatusCode)
+	}
+	// 非法 body → 400
+	resp, _ = doReq(t, "POST", ts.URL+"/api/v1/tenants/tenant-v/workflowruns", `bad`)
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid body status = %d, want 400", resp.StatusCode)
 	}
