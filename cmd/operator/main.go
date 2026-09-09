@@ -60,6 +60,10 @@ func main() {
 	flag.StringVar(&temporalTaskQueue, "temporal-task-queue", "agent-orchestration", "Temporal task queue.")
 	var natsURL string
 	flag.StringVar(&natsURL, "nats-url", "", "NATS server URL (e.g. nats://127.0.0.1:4222). Enables event-driven orchestration.")
+	var enableJetStream bool
+	flag.BoolVar(&enableJetStream, "enable-jetstream", false, "Enable NATS JetStream persistence (key control events survive restart, replayable).")
+	var jetStreamStream string
+	flag.StringVar(&jetStreamStream, "jetstream-stream", "agent-events", "NATS JetStream stream name (used when --enable-jetstream).")
 	var enableWebhooks bool
 	flag.BoolVar(&enableWebhooks, "enable-webhooks", false, "Enable admission webhooks (validating + mutating defaulting). Requires WebhookServer TLS certs (see config/webhook).")
 
@@ -182,7 +186,12 @@ func main() {
 
 		// 事件驱动推进：订阅 NATS 事件总线（若配置），转发给节点事件处理器
 		if natsURL != "" {
-			natsBus, err := eventbus.NewNatsBus(eventbus.NatsConfig{URL: natsURL, SubjectPrefix: "agent-runtime"})
+			natsBus, err := eventbus.NewNatsBus(eventbus.NatsConfig{
+				URL:             natsURL,
+				SubjectPrefix:   "agent-runtime",
+				EnableJetStream: enableJetStream,
+				JetStreamStream: jetStreamStream,
+			})
 			if err != nil {
 				setupLog.Error(err, "unable to connect nats", "url", natsURL)
 				os.Exit(1)
@@ -191,7 +200,7 @@ func main() {
 				setupLog.Error(err, "unable to subscribe node events")
 				os.Exit(1)
 			}
-			setupLog.Info("event-driven orchestration enabled", "nats", natsURL)
+			setupLog.Info("event-driven orchestration enabled", "nats", natsURL, "jetstream", enableJetStream)
 		}
 		setupLog.Info("workflowrun controller enabled", "temporal", temporalAddr)
 	} else {

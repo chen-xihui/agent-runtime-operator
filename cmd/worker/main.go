@@ -17,9 +17,13 @@ import (
 
 func main() {
 	var temporalAddr, taskQueue, natsURL string
+	var enableJetStream bool
+	var jetStreamStream string
 	flag.StringVar(&temporalAddr, "temporal-address", "127.0.0.1:7233", "Temporal server address.")
 	flag.StringVar(&taskQueue, "task-queue", "agent-orchestration", "Temporal task queue.")
 	flag.StringVar(&natsURL, "nats-url", "", "NATS server URL (emit node events).")
+	flag.BoolVar(&enableJetStream, "enable-jetstream", false, "Enable NATS JetStream persistence (key control events survive restart, replayable).")
+	flag.StringVar(&jetStreamStream, "jetstream-stream", "agent-events", "NATS JetStream stream name (used when --enable-jetstream).")
 	flag.Parse()
 
 	tClient, err := client.Dial(client.Options{HostPort: temporalAddr})
@@ -35,8 +39,10 @@ func main() {
 	if natsURL != "" {
 		var err error
 		bus, err = eventbus.NewNatsBus(eventbus.NatsConfig{
-			URL:           natsURL,
-			SubjectPrefix: "agent-runtime",
+			URL:             natsURL,
+			SubjectPrefix:   "agent-runtime",
+			EnableJetStream: enableJetStream,
+			JetStreamStream: jetStreamStream,
 		})
 		if err != nil {
 			log.Fatalf("connect nats %s: %v", natsURL, err)
@@ -90,7 +96,7 @@ func main() {
 	w := worker.New(tClient, taskQueue, worker.Options{})
 	orchWorker := orchestrator.NewWorker(w)
 
-	log.Printf("starting orchestration worker (temporal=%s queue=%s nats=%s)", temporalAddr, taskQueue, natsURL)
+	log.Printf("starting orchestration worker (temporal=%s queue=%s nats=%s jetstream=%v)", temporalAddr, taskQueue, natsURL, enableJetStream)
 	if err := orchWorker.StartAsync(); err != nil {
 		log.Fatalf("worker failed to start: %v", err)
 	}

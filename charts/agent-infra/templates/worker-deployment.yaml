@@ -23,6 +23,14 @@ spec:
         - name: worker
           image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          args:
+            - --temporal-address={{ .Values.worker.temporalAddress }}
+            - --nats-url={{ .Values.worker.natsURL }}
+            {{- if .Values.worker.enableJetStream }}
+            - --enable-jetstream
+            - --jetstream-stream={{ .Values.worker.jetStreamStream }}
+            {{- end }}
+          {{- /* 注意：worker 通过 flag 读取连接参数（不读 env），故 TEMPORAL_ADDRESS/NATS_URL 仅作部署信息保留 */}}
           env:
             - name: TEMPORAL_ADDRESS
               value: {{ .Values.worker.temporalAddress | quote }}

@@ -606,6 +606,20 @@ NATS 事件总线 subject 级 ACL（R-3）✅
 - 发现并记录：运行中 operator/worker 的 eventbus 非 JetStream 模式（EnableJetStream 未开），
   事件不落盘 → 需开启持久化才有历史可回放（design-doc 8 关键控制事件）
 
+开启事件持久化闭环 ✅
+- 背景：此前 operator/worker 以临时模式连接 NATS（NewNatsBus 未设 EnableJetStream），
+  运行中的编排事件不落盘，replay-events 无可回放历史（testing-guide 已知行为）。
+- 已实现（cmd/operator/main.go、cmd/worker/main.go）
+  - 新增 `--enable-jetstream` + `--jetstream-stream`（默认 agent-events）透传到 eventbus.NatsConfig
+  - 持久化 stream 自动幂等创建（FileStorage），关键控制事件（NODE_*）落盘，可经 replay-events 回放
+  - 订阅端（operator）与发布端（worker）共享同名 stream，事件持久消费可推进/重放
+- Helm（charts/agent-infra）同步
+  - values：operator/worker 增加 enableJetStream（默认 true）+ jetStreamStream
+  - 模板：以 flag（--enable-jetstream/--jetstream-stream）传入（程序只读 flag 不读 env）
+  - 顺带修复：原 operator/worker deployment 以 env 传 TEMPORAL_ADDRESS/NATS_URL，而程序只读 flag 不读 env，
+    导致配置实际不生效；改为 args flag 传入（env 保留仅作部署信息）
+- 验证：本机无 helm/nats 环境未跑模板渲染与集成测试；文档（testing-guide）已更新启用步骤，待集群实测回放
+
 
 可观测性 / Grafana（M5，config/prometheus + config/grafana）✅
 新增

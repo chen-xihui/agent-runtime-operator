@@ -39,9 +39,16 @@ spec:
           args:
             - --leader-elect
             - --health-probe-bind-address=:8081
+            - --temporal-address={{ .Values.operator.temporalAddress }}
+            - --nats-url={{ .Values.operator.natsURL }}
             {{- if .Values.operator.enableWebhooks }}
             - --enable-webhooks
             {{- end }}
+            {{- if .Values.operator.enableJetStream }}
+            - --enable-jetstream
+            - --jetstream-stream={{ .Values.operator.jetStreamStream }}
+            {{- end }}
+          {{- /* 注意：operator 通过 flag 读取连接参数（不读 env），故 TEMPORAL_ADDRESS/NATS_URL 仅作部署信息保留 */}}
           env:
             - name: TEMPORAL_ADDRESS
               value: {{ .Values.operator.temporalAddress | quote }}

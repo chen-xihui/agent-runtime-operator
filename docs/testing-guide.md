@@ -603,9 +603,12 @@ scp /tmp/replay-events root@<NODE>:/
 - 支持按 tenant / since / limit / json 过滤与输出
 - 实测：`TestReplayJetStream_ReplaysPublishedHistory` 在真实 NATS+JetStream 上 PASS
 
-**⚠️ 已知行为**：当前验证环境 operator/worker 的 eventbus 以**非 JetStream（临时）** 模式连接
-（`NewNatsBus{URL, SubjectPrefix}` 未设 `EnableJetStream`），事件不落盘，故运行中的编排无历史可回放；
-需 `EnableJetStream: true` + 持久化 stream（design-doc 8 关键控制事件）方可回放。
+**启用持久化（关键前置）**：operator 与 worker 的 eventbus 默认非 JetStream（临时），事件不落盘则无可回放历史。
+现已在两者增加持久化开关，需**同时**以 `--enable-jetstream` 启动并配 `--jetstream-stream`（默认 `agent-events`）：
+- operator：`--nats-url=nats://127.0.0.1:4222 --enable-jetstream --jetstream-stream=agent-events`
+- worker：同上参数
+- operator/worker 须共享同一 stream 名，否则订阅方与发布方数据流不同，事件无法被消费推进
+- Helm（`charts/agent-infra`）：`operator.enableJetStream` / `worker.enableJetStream`（默认 `true`）+ `jetStreamStream` 对齐
 
 ### 4.12 可观测性 / Grafana（M5，config/prometheus + config/grafana）
 

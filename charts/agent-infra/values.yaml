@@ -20,6 +20,11 @@ operator:
   # 连接 Temporal 与 NATS（operator 需连两者做事件驱动编排）
   temporalAddress: agent-infra-temporal:7233
   natsURL: nats://agent-infra-nats:4222
+  # 启用 NATS JetStream 持久化（关键控制事件落盘，可经 replay-events 回放）。
+  # 需 NATS 以 JetStream 模式运行（见下方 nats.jetstream=true）。
+  enableJetStream: true
+  # JetStream stream 名（operator/worker 需一致，共享持久化 stream）
+  jetStreamStream: agent-events
   # 准入 Webhook（需证书注入，默认关；生产建议启用 + cert-manager）
   enableWebhooks: false
   webhookPort: 9443
@@ -36,6 +41,9 @@ worker:
     pullPolicy: IfNotPresent
   temporalAddress: agent-infra-temporal:7233
   natsURL: nats://agent-infra-nats:4222
+  # 与 operator 保持一致的 JetStream 持久化配置（共享 stream）
+  enableJetStream: true
+  jetStreamStream: agent-events
 
 # ---- NATS JetStream 事件总线（design-doc 事件总线）----
 nats:

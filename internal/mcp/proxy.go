@@ -11,8 +11,9 @@ import (
 // Invoker 底层工具调用器（实际转发到 MCP Server）
 type Invoker func(ctx context.Context, tool *Tool, args map[string]any) (map[string]any, error)
 
-// DefaultInvoker 默认调用器：此处占位，MCP Server 实际转发在 M3 集成。
-// 生产环境由 MCP Client 按 tool.Endpoint 转发。
+// DefaultInvoker 默认调用器：仅作为未注入 MCPInvoker 时的回显 fallback（便于测试/调试）。
+// 生产环境请用 MCPInvoker（internal/mcp/invoker.go）经 WithInvoker(invoker.Invoke) 注入，
+// 由 MCP Client 按 Tool.Endpoint + Transport（stdio / streamable HTTP）转发到真实 Tool Server。
 func DefaultInvoker(ctx context.Context, tool *Tool, args map[string]any) (map[string]any, error) {
 	return map[string]any{
 		"tool":     tool.Name,
