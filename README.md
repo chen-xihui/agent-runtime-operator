@@ -76,7 +76,11 @@
 make build        # 编译 ./bin/operator 与 ./bin/event-relay
 make vet          # go vet
 make test         # 单元测试（含 relay socket 通路测试）
+make lint         # golangci-lint（需安装）
+make ci           # 本地复现 CI 门禁（vet + test + lint + helm-lint）
 ```
+
+> CI：`.github/workflows/ci.yml`（build / vet / test -race / golangci-lint / helm lint / kustomize 渲染）。
 
 ### 2. 部署到集群
 

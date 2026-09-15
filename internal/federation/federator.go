@@ -1,6 +1,10 @@
 // Package federation 提供多集群联邦（M5 生产化）。
 // 管理跨集群信任（FederationPolicy）与跨集群 Agent 路由，
 // 使本地无法满足的 Agent 任务能经联邦转发到远程集群。
+//
+// ⚠️ 多副本限制：Router 的集群注册表为**进程内状态**，operator 多副本部署时
+// 各副本互不可见，联邦发现结果取决于请求落点。生产需外置共享存储或仅以
+// 单副本运行联邦组件。
 package federation
 
 import (

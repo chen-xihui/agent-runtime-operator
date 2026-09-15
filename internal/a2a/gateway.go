@@ -25,6 +25,11 @@ type registration struct {
 // MemoryGateway 基于内存的 A2A 注册中心与消息路由
 // 通道分工（D-2）：Agent 之间协作走 A2A；跨租户默认禁止（D-4）。
 // 跨集群（M5 联邦）：本地无目标 Agent 时，经联邦路由器跨集群委派（D-4 双向信任）。
+//
+// ⚠️ 多副本限制：注册表与联邦信任均为**进程内状态**。operator 以 replicas>1
+// 部署时，各副本的注册表相互独立：A 副本注册的 Agent 在 B 副本不可发现，
+// 导致路由/发现偶发失败（取决于请求落到哪个副本）。生产多副本需将注册表
+// 外置（CRD 存储 + informer 缓存，或 Redis/NATS KV 等共享存储）。
 type MemoryGateway struct {
 	mu    sync.RWMutex
 	regs  map[string]registration // agentID -> 注册条目

@@ -16,3 +16,8 @@ vendor/
 # 本地环境
 .env
 kubeconfig
+
+# 本地临时脚本 / 验证产物
+/tmp/
+_vm_exec.py
+_vm_upload.py

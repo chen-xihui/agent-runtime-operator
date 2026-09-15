@@ -51,7 +51,7 @@ func (p *MemoryProxy) WithInvoker(inv Invoker) *MemoryProxy {
 	return p
 }
 
-// WithAudit 设置审计回调
+// WithAudit 设置审计回调（轻量可观测钩子，供调用方集成；与 WithAuditStore 独立并存）。
 func (p *MemoryProxy) WithAudit(a func(tenantID, agentID, toolName string, args, result map[string]any, err error)) *MemoryProxy {
 	p.audit = a
 	return p
@@ -94,13 +94,22 @@ func (p *MemoryProxy) Invoke(ctx context.Context, agentID, toolName string, args
 	return result, nil
 }
 
+// doAudit 统一审计出口：一次调用同时驱动三类审计副作用，职责互不替代：
+//  1. 审计回调（WithAudit）：供调用方集成（自定义日志/工单/外发），可选；
+//  2. 审计落库（WithAuditStore）：DLP 全量出网审计持久化（P1-1），可选；
+//  3. 可观测性指标（M5）：工具调用与错误计数。
+//
+// 三者相互独立：即使配置了回调，落库与指标仍会执行，避免审计链路缺失。
 func (p *MemoryProxy) doAudit(agentID, toolName string, args, result map[string]any, err error) {
+	// 1) 调用方回调（可选）
 	if p.audit != nil {
 		p.audit(p.tenantID, agentID, toolName, args, result, err)
 	} else {
+		// 无回调时退化为标准日志（兜底可观测性）
 		log.Printf("mcp audit: tenant=%s agent=%s tool=%s err=%v", p.tenantID, agentID, toolName, err)
 	}
-	// DLP 全量出网审计落库（P1-1）
+
+	// 2) DLP 审计落库（P1-1，成功与失败均记录）
 	if p.store != nil {
 		rec := &audit.Record{
 			TenantID: p.tenantID,
@@ -110,10 +119,12 @@ func (p *MemoryProxy) doAudit(agentID, toolName string, args, result map[string]
 			Success:  err == nil,
 			Error:    errString(err),
 		}
-		_ = p.store.Write(context.Background(), rec)
+		if werr := p.store.Write(context.Background(), rec); werr != nil {
+			log.Printf("mcp audit store write failed: tenant=%s tool=%s err=%v", p.tenantID, toolName, werr)
+		}
 	}
 
-	// 可观测性指标（M5）
+	// 3) 可观测性指标（M5）
 	resLabel := "success"
 	if err != nil {
 		resLabel = "error"

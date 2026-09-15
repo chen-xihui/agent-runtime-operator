@@ -8,6 +8,7 @@ require (
 	github.com/nats-io/nats.go v1.36.0
 	github.com/prometheus/client_golang v1.19.1
 	go.temporal.io/sdk v1.26.1
+	golang.org/x/mod v0.15.0
 	golang.org/x/time v0.3.0
 	k8s.io/api v0.30.1
 	k8s.io/apimachinery v0.30.1

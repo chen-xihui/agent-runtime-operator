@@ -37,7 +37,11 @@ type ToolGrant struct {
 	Redact []string
 }
 
-// MemoryRegistry 基于内存存储的 MCP 工具注册与鉴权中心
+// MemoryRegistry 基于内存存储的 MCP 工具注册与鉴权中心。
+//
+// ⚠️ 多副本限制：工具注册与授权为**进程内状态**，限流计数器亦为进程本地
+// （各副本独立计数，全局速率上限会被放大 N 倍）。生产多副本需外置注册表
+// 与共享限流（如 Redis）。工具授权可由 ToolBinding CRD 在各副本重建。
 type MemoryRegistry struct {
 	mu     sync.RWMutex
 	tools  map[string]*Tool                       // 工具名 -> 工具描述

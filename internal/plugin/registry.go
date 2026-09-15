@@ -1,6 +1,10 @@
 // Package plugin 提供 Agent Runtime 的插件市场与扩展机制（M5）。
 // 插件为 Agent 提供可扩展能力（工具、技能、事件处理器等），
 // 支持注册、发现、版本管理、安装/卸载、启停。
+//
+// ⚠️ 多副本限制：Registry 与 AgentPlugins 均为**进程内状态**，多副本部署时
+// 各副本的插件安装/挂载状态不一致。生产需以 CRD（Plugin）为权威源并由
+// 各副本重建，或使用共享存储。
 package plugin
 
 import (
@@ -9,7 +13,10 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
+
+	"golang.org/x/mod/semver"
 )
 
 // 插件状态
@@ -228,38 +235,20 @@ func hasAnyTag(have, want []string) bool {
 	return false
 }
 
-// compareVersions 简单语义化版本比较（a < b 返回负数，a > b 返回正数）
+// compareVersions 语义化版本比较（a < b 返回负数，a == b 返回 0，a > b 返回正数）。
+// 采用标准 semver 语义（golang.org/x/mod/semver），正确处理预发布版本
+// （如 1.0.0-rc.1 < 1.0.0）与构建元数据；非法版本按 semver 规则排在有效版本之前。
 func compareVersions(a, b string) int {
-	as := parseVersion(a)
-	bs := parseVersion(b)
-	for i := range 3 {
-		if as[i] != bs[i] {
-			if as[i] < bs[i] {
-				return -1
-			}
-			return 1
-		}
-	}
-	return 0
+	return semver.Compare(normalizeVersion(a), normalizeVersion(b))
 }
 
-// parseVersion 解析 x.y.z（缺失补 0）
-func parseVersion(v string) [3]int {
-	var out [3]int
-	idx := 0
-	num := 0
-	for i := 0; i < len(v) && idx < 3; i++ {
-		c := v[i]
-		if c >= '0' && c <= '9' {
-			num = num*10 + int(c-'0')
-		} else {
-			out[idx] = num
-			num = 0
-			idx++
-		}
+// normalizeVersion 将版本号规范化为 semver 要求的 "v" 前缀形式。
+func normalizeVersion(v string) string {
+	if v == "" {
+		return ""
 	}
-	if idx < 3 {
-		out[idx] = num
+	if !strings.HasPrefix(v, "v") {
+		return "v" + v
 	}
-	return out
+	return v
 }

@@ -34,6 +34,15 @@ run: ## 本地运行 Operator（连当前 kubeconfig 集群）
 vet: ## 运行 go vet
 	$(GO) vet ./...
 
+GOLANGCI_LINT ?= golangci-lint
+
+.PHONY: lint
+lint: ## 运行 golangci-lint（需安装）
+	$(GOLANGCI_LINT) run ./...
+
+.PHONY: ci
+ci: vet test lint helm-lint ## 本地复现 CI 全部门禁
+
 .PHONY: fmt
 fmt: ## 格式化代码
 	$(GO) fmt ./...

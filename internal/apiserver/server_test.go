@@ -3,12 +3,14 @@ package apiserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -60,6 +62,29 @@ func doReq(t *testing.T, method, url, body string) (*http.Response, map[string]i
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return resp, out
 }
+
+// TestHTTPStatusForError 错误语义 → HTTP 状态码映射
+func TestHTTPStatusForError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"notfound", apierrors.NewNotFound(v1.GroupVersion.WithResource("tenants").GroupResource(), "x"), http.StatusNotFound},
+		{"alreadyexists", apierrors.NewAlreadyExists(v1.GroupVersion.WithResource("tenants").GroupResource(), "x"), http.StatusConflict},
+		{"forbidden", apierrors.NewForbidden(v1.GroupVersion.WithResource("tenants").GroupResource(), "x", errForbidden), http.StatusForbidden},
+		{"unauthorized", apierrors.NewUnauthorized("nope"), http.StatusUnauthorized},
+		{"invalid", apierrors.NewInvalid(v1.GroupVersion.WithKind("Tenant").GroupKind(), "x", nil), http.StatusUnprocessableEntity},
+		{"unknown", errors.New("boom"), http.StatusInternalServerError},
+	}
+	for _, c := range cases {
+		if got := httpStatusForError(c.err); got != c.want {
+			t.Fatalf("%s: status = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+var errForbidden = errors.New("forbidden")
 
 // TestServer_RejectsOversizedBody 超大请求体应被拒绝（1MiB 上限，防内存耗尽）
 func TestServer_RejectsOversizedBody(t *testing.T) {

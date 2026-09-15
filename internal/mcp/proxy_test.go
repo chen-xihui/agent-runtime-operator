@@ -62,6 +62,35 @@ func TestMemoryProxy_Unauthorized(t *testing.T) {
 	}
 }
 
+// TestMemoryProxy_AuditCallbackAndStore 审计回调与落库相互独立、并存生效
+func TestMemoryProxy_AuditCallbackAndStore(t *testing.T) {
+	r := NewMemoryRegistry()
+	_ = r.Register(context.Background(), &Tool{Name: "db.query"})
+	r.BindToolGrant("tenant-a", "agent-x", map[string]ToolGrant{"db.query": {}})
+
+	var callbackCalls int
+	store := audit.NewMemoryStore()
+	proxy := NewMemoryProxy("tenant-a", r).
+		WithAuditStore(store).
+		WithAudit(func(tID, aID, toolName string, args, result map[string]any, err error) {
+			callbackCalls++
+		})
+
+	if _, err := proxy.Invoke(context.Background(), "agent-x", "db.query", nil); err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+
+	// 回调被触发
+	if callbackCalls != 1 {
+		t.Fatalf("callback calls = %d, want 1", callbackCalls)
+	}
+	// 同时落库（回调不应取代落库）
+	records, _ := store.Query(context.Background(), audit.Filter{TenantID: "tenant-a"})
+	if len(records) != 1 {
+		t.Fatalf("store records = %d, want 1 (callback must not replace store)", len(records))
+	}
+}
+
 func TestMemoryProxy_AuditStore(t *testing.T) {
 	r := NewMemoryRegistry()
 	_ = r.Register(context.Background(), &Tool{Name: "db.query"})

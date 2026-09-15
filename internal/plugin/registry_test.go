@@ -149,6 +149,12 @@ func TestCompareVersions(t *testing.T) {
 		{"1.0.1", "1.0.0", 1},
 		{"2.0.0", "1.9.9", 1},
 		{"1.0", "1.0.1", -1},
+		// 标准 semver：预发布版本小于正式版本
+		{"1.0.0-rc.1", "1.0.0", -1},
+		{"1.0.0-alpha", "1.0.0-beta", -1},
+		{"1.0.0-rc.2", "1.0.0-rc.1", 1},
+		// 构建元数据不影响优先级
+		{"1.0.0+build1", "1.0.0+build2", 0},
 	}
 	for _, c := range cases {
 		if got := compareVersions(c.a, c.b); got != c.want {

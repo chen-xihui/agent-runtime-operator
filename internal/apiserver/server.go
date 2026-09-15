@@ -324,15 +324,38 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeError 将错误映射为合适的 HTTP 状态码并返回 JSON 错误体。
+// 覆盖 K8s API 错误语义（NotFound/AlreadyExists/Forbidden/Invalid/Conflict/
+// Unauthorized/Timeout），未识别错误归为 500，避免业务错误一律退化为服务端错误。
 func writeError(w http.ResponseWriter, err error) {
-	status := http.StatusInternalServerError
-	if apierrors.IsNotFound(err) {
-		status = http.StatusNotFound
-	}
-	if apierrors.IsAlreadyExists(err) {
-		status = http.StatusConflict
-	}
+	status := httpStatusForError(err)
 	writeJSON(w, status, map[string]string{"error": err.Error()})
+}
+
+// httpStatusForError 按错误语义确定 HTTP 状态码。
+func httpStatusForError(err error) int {
+	switch {
+	case apierrors.IsNotFound(err):
+		return http.StatusNotFound
+	case apierrors.IsAlreadyExists(err):
+		return http.StatusConflict
+	case apierrors.IsConflict(err):
+		return http.StatusConflict
+	case apierrors.IsForbidden(err):
+		return http.StatusForbidden
+	case apierrors.IsUnauthorized(err):
+		return http.StatusUnauthorized
+	case apierrors.IsInvalid(err):
+		return http.StatusUnprocessableEntity
+	case apierrors.IsBadRequest(err):
+		return http.StatusBadRequest
+	case apierrors.IsTimeout(err):
+		return http.StatusGatewayTimeout
+	case apierrors.IsServiceUnavailable(err):
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 // withRecovery panic 恢复中间件：捕获 panic，记录堆栈并返回 500。

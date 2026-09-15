@@ -1,0 +1,32 @@
+# golangci-lint 配置（CI 与本地共用）
+# 说明：默认启用 govet/errcheck/staticcheck/ineffassign/unused 等核心 linter，
+# 并显式关闭与项目现状冲突的风格类检查，避免大规模无意义改动。
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: false
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+
+linters-settings:
+  gofmt:
+    simplify: true
+
+issues:
+  exclude-dirs:
+    - bin
+    - tmp
+  exclude-rules:
+    # 测试文件允许更宽松（未检查的错误返回等）
+    - path: _test\.go
+      linters:
+        - errcheck
