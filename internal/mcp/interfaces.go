@@ -25,6 +25,9 @@ func (t *Tool) transportName() string {
 	return t.Transport
 }
 
+// RateLimit 工具调用配额。
+// 注意：当前仅 RPS/Burst 生效（令牌桶，按租户/Agent/工具维度）；
+// Monthly 为预留字段，尚未实现月度累计配额，配置后暂不生效。
 type RateLimit struct {
 	RPS     int `json:"rps,omitempty"`
 	Burst   int `json:"burst,omitempty"`

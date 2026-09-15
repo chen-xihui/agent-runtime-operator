@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
+
+	"golang.org/x/time/rate"
 )
 
 // 常见错误
@@ -41,9 +44,10 @@ type MemoryRegistry struct {
 	grants map[string]map[string]map[string]ToolGrant // tenantID -> (agentID -> (toolName -> 授权))
 	// 租户级默认授权：tenantID -> (toolName -> 授权)（Agent 为空时）
 	tenantGrants map[string]map[string]ToolGrant
-	// 调用计数（用于限流）
-	callCounts map[string]int
-	limits     map[string]RateLimit
+	// limits 工具级限流配置：toolName -> RateLimit
+	limits map[string]RateLimit
+	// limiters 按 <tenantID>/<agentID>/<toolName> 维度的令牌桶（真滑动窗口语义）
+	limiters map[string]*rate.Limiter
 }
 
 // NewMemoryRegistry 创建内存工具注册中心
@@ -52,8 +56,8 @@ func NewMemoryRegistry() *MemoryRegistry {
 		tools:        make(map[string]*Tool),
 		grants:       make(map[string]map[string]map[string]ToolGrant),
 		tenantGrants: make(map[string]map[string]ToolGrant),
-		callCounts:   make(map[string]int),
 		limits:       make(map[string]RateLimit),
+		limiters:     make(map[string]*rate.Limiter),
 	}
 }
 
@@ -81,6 +85,13 @@ func (r *MemoryRegistry) Unregister(ctx context.Context, name string) error {
 	defer r.mu.Unlock()
 	delete(r.tools, name)
 	delete(r.limits, name)
+	// 清理该工具对应的所有令牌桶，避免内存泄漏
+	suffix := "/" + name
+	for k := range r.limiters {
+		if strings.HasSuffix(k, suffix) {
+			delete(r.limiters, k)
+		}
+	}
 	return nil
 }
 
@@ -120,8 +131,8 @@ func (r *MemoryRegistry) Authorize(ctx context.Context, tenantID, agentID, toolN
 		Redact: grant.Redact,
 	}
 
-	// 限流检查（简化计数器实现）
-	if err := r.checkRateLimit(toolName); err != nil {
+	// 限流检查（按租户/Agent/工具维度的令牌桶，真滑动窗口语义）
+	if err := r.checkRateLimit(tenantID, agentID, toolName); err != nil {
 		return nil, nil, err
 	}
 
@@ -149,17 +160,32 @@ func (r *MemoryRegistry) lookupGrant(tenantID, agentID, toolName string) (ToolGr
 	return ToolGrant{}, false
 }
 
-// checkRateLimit 简化滑动窗口限流（按累计调用数）
-func (r *MemoryRegistry) checkRateLimit(toolName string) error {
+// checkRateLimit 基于令牌桶的限流（按 <tenantID>/<agentID>/<toolName> 维度隔离）。
+// 语义：RPS 为每秒补充速率，Burst 为突发容量（未配置时取 RPS，最小 1）。
+// 令牌桶会随时间自动补充，不存在"累计计数导致永久拒绝"的问题；
+// 不同租户/Agent 之间互不影响（避免一个租户耗尽全局配额）。
+func (r *MemoryRegistry) checkRateLimit(tenantID, agentID, toolName string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	lim, ok := r.limits[toolName]
 	if !ok || lim.RPS <= 0 {
 		return nil
 	}
-	r.callCounts[toolName]++
-	if r.callCounts[toolName] > lim.RPS*60 { // 每 60s 窗口内的简化上限
-		return fmt.Errorf("mcp: rate limit exceeded for tool %q", toolName)
+	key := tenantID + "/" + agentID + "/" + toolName
+	l, ok := r.limiters[key]
+	if !ok {
+		burst := lim.Burst
+		if burst <= 0 {
+			burst = lim.RPS
+		}
+		if burst < 1 {
+			burst = 1
+		}
+		l = rate.NewLimiter(rate.Limit(lim.RPS), burst)
+		r.limiters[key] = l
+	}
+	if !l.Allow() {
+		return fmt.Errorf("mcp: rate limit exceeded for tool %q (tenant=%s agent=%s)", toolName, tenantID, agentID)
 	}
 	return nil
 }
@@ -181,29 +207,62 @@ func (r *MemoryRegistry) List(ctx context.Context, tenantID string) ([]*Tool, er
 	return out, nil
 }
 
-// RedactValues 按字段名列表对返回值脱敏（DLP，P1-1）
+// RedactedPlaceholder 脱敏占位符
+const RedactedPlaceholder = "[REDACTED]"
+
+// RedactValues 按字段名列表对返回值脱敏（DLP，P1-1）。
+// 递归遍历嵌套 map / slice，命中字段名（大小写不敏感）即替换为占位符，
+// 避免嵌套结构中的敏感字段（如 {"data": {"token": "..."}}）绕过脱敏。
+// 返回值：脱敏后的对象与是否发生脱敏（避免污染调用方原始数据时无法判断）。
 func RedactValues(result map[string]any, redactFields []string) map[string]any {
-	if len(redactFields) == 0 {
+	if len(redactFields) == 0 || result == nil {
 		return result
 	}
 	redactSet := make(map[string]struct{}, len(redactFields))
 	for _, f := range redactFields {
-		redactSet[f] = struct{}{}
+		redactSet[strings.ToLower(f)] = struct{}{}
 	}
-	for k := range redactSet {
-		if _, ok := result[k]; ok {
-			result[k] = "[REDACTED]"
-		}
-	}
-	return result
+	out, _ := redactValue(result, redactSet).(map[string]any)
+	return out
 }
 
-// InjectScope 将数据范围过滤条件注入工具请求参数（跨租户数据不可达）
+// redactValue 递归脱敏任意值（map / slice / 标量），返回深拷贝后的结果。
+func redactValue(v any, redactSet map[string]struct{}) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			if _, hit := redactSet[strings.ToLower(k)]; hit {
+				out[k] = RedactedPlaceholder
+				continue
+			}
+			out[k] = redactValue(val, redactSet)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, item := range t {
+			out[i] = redactValue(item, redactSet)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// InjectScope 将数据范围过滤条件注入工具请求参数（跨租户数据不可达）。
+//
+// 安全语义（P1-4，必须在测试中固化）：
+//   - scope.Filter 中的键**始终覆盖** args 中同名键——调用方无法通过传入
+//     同名参数（如 tenant、userId）绕过数据范围限制；
+//   - 返回新的 map，不修改调用方原始 args；
+//   - scope 为空时原样返回 args（不额外拷贝，调用方不应再修改）。
 func InjectScope(args map[string]any, scope *DataScope) map[string]any {
 	if scope == nil || len(scope.Filter) == 0 {
 		return args
 	}
 	out := make(map[string]any, len(args)+len(scope.Filter))
+	// 先拷贝调用方参数，再注入 scope（scope 后写 → 覆盖同名键）
 	for k, v := range args {
 		out[k] = v
 	}

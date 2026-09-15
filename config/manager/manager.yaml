@@ -39,6 +39,14 @@ spec:
           args:
             - --leader-elect
             - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:8080
+            # M3 编排：Temporal 地址（不设则 WorkflowRun 控制器不注册，编排功能关闭）
+            - --temporal-address=agent-infra-temporal.agent-runtime-system.svc.cluster.local:7233
+            # M2/M3 事件总线：NATS 地址（不设则事件驱动推进不生效）
+            - --nats-url=nats://agent-infra-nats.agent-runtime-system.svc.cluster.local:4222
+            # 事件持久化（关键控制事件落盘，可经 replay-events 回放）
+            - --enable-jetstream
+            - --jetstream-stream=agent-events
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
