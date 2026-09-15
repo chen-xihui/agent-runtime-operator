@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agent-runtime-operator/internal/eventbus"
+	"github.com/chen-xihui/agent-runtime-operator/internal/eventbus"
 )
 
 // waitForRelayConnections 等待 relay 识别到指定数量的连接（避免竞态）

@@ -11,9 +11,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/example/agent-runtime-operator/internal/apiserver"
-	"github.com/example/agent-runtime-operator/internal/audit"
-	"github.com/example/agent-runtime-operator/sdk"
+	"github.com/chen-xihui/agent-runtime-operator/internal/apiserver"
+	"github.com/chen-xihui/agent-runtime-operator/internal/audit"
+	"github.com/chen-xihui/agent-runtime-operator/sdk"
 )
 
 func main() {

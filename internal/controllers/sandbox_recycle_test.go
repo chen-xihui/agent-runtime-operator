@@ -11,8 +11,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/sandbox"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/sandbox"
 )
 
 func testSandboxReconciler(objs ...client.Object) *SandboxReconciler {

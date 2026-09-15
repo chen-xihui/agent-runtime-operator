@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/a2a"
-	"github.com/example/agent-runtime-operator/internal/mcp"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/a2a"
+	"github.com/chen-xihui/agent-runtime-operator/internal/mcp"
 )
 
 // fakeMCP 测试替身

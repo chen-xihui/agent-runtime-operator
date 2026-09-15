@@ -3,7 +3,7 @@ package admission
 import (
 	"context"
 
-	"github.com/example/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )

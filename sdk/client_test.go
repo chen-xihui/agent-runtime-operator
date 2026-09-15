@@ -8,7 +8,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
 )
 
 func testClient(t *testing.T, objs ...client.Object) *Client {

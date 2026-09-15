@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/example/agent-runtime-operator/internal/audit"
-	"github.com/example/agent-runtime-operator/internal/metrics"
+	"github.com/chen-xihui/agent-runtime-operator/internal/audit"
+	"github.com/chen-xihui/agent-runtime-operator/internal/metrics"
 )
 
 // Invoker 底层工具调用器（实际转发到 MCP Server）

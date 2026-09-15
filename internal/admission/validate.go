@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/orchestrator"
+	"github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/orchestrator"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 

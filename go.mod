@@ -1,4 +1,4 @@
-module github.com/example/agent-runtime-operator
+module github.com/chen-xihui/agent-runtime-operator
 
 go 1.22.0
 

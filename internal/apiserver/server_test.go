@@ -15,9 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/audit"
-	"github.com/example/agent-runtime-operator/sdk"
+	"github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/audit"
+	"github.com/chen-xihui/agent-runtime-operator/sdk"
 )
 
 func testServer(t *testing.T, objs ...client.Object) *httptest.Server {

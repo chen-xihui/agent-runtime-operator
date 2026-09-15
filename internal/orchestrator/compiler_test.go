@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/api/v1"
 )
 
 func TestCompiler_Compile(t *testing.T) {

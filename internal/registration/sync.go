@@ -10,9 +10,9 @@ import (
 	"context"
 	"slices"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/a2a"
-	"github.com/example/agent-runtime-operator/internal/mcp"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/a2a"
+	"github.com/chen-xihui/agent-runtime-operator/internal/mcp"
 )
 
 // MCPRegistry 抽象：注册中心（最小接口，便于测试替身）

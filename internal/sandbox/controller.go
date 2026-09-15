@@ -13,8 +13,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
-	runtimepkg "github.com/example/agent-runtime-operator/internal/runtime"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
+	runtimepkg "github.com/chen-xihui/agent-runtime-operator/internal/runtime"
 )
 
 // Config 沙箱控制器的可调参数

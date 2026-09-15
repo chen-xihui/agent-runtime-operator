@@ -10,10 +10,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/eventbus"
-	"github.com/example/agent-runtime-operator/internal/metrics"
-	"github.com/example/agent-runtime-operator/internal/orchestrator"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/eventbus"
+	"github.com/chen-xihui/agent-runtime-operator/internal/metrics"
+	"github.com/chen-xihui/agent-runtime-operator/internal/orchestrator"
 )
 
 // WorkflowRunReconciler 调谐 WorkflowRun 资源。

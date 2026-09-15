@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
 )
 
 // TenantReconciler 调谐 Tenant 资源，负责创建/回收租户 Namespace 与资源配额

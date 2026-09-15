@@ -3,7 +3,7 @@ package admission
 import (
 	"fmt"
 
-	"github.com/example/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/api/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"

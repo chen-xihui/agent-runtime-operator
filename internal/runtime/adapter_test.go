@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
 )
 
 func TestRegistry_Get(t *testing.T) {

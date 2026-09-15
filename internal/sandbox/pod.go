@@ -5,7 +5,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
 )
 
 // relayContainerName Event Relay Sidecar 容器名

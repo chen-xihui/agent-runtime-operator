@@ -509,7 +509,7 @@ type Config struct {
 
 ```bash
 # 1. 生成工程脚手架
-kubebuilder init --domain agent.runtime.io --repo github.com/example/agent-runtime-operator
+kubebuilder init --domain agent.runtime.io --repo github.com/chen-xihui/agent-runtime-operator
 kubebuilder create api --group agent --version v1 --kind Tenant --resource --controller
 kubebuilder create api --group agent --version v1 --kind Sandbox --resource --controller
 kubebuilder create api --group agent --version v1 --kind Agent --resource --controller

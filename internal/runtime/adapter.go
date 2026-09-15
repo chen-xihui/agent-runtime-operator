@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
 )
 
 // Runtime 沙箱运行时适配器接口（M4）

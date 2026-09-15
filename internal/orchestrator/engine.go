@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/example/agent-runtime-operator/internal/eventbus"
+	"github.com/chen-xihui/agent-runtime-operator/internal/eventbus"
 	"go.temporal.io/sdk/client"
 )
 

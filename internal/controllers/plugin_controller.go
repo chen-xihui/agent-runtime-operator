@@ -9,8 +9,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/plugin"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/plugin"
 )
 
 // PluginReconciler 调谐 Plugin 资源，把插件 CRD 同步到 PluginRegistry（M5 插件市场）。

@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/example/agent-runtime-operator/internal/eventbus"
-	"github.com/example/agent-runtime-operator/internal/relay"
+	"github.com/chen-xihui/agent-runtime-operator/internal/eventbus"
+	"github.com/chen-xihui/agent-runtime-operator/internal/relay"
 )
 
 func main() {

@@ -13,9 +13,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/registration"
-	"github.com/example/agent-runtime-operator/internal/sandbox"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/registration"
+	"github.com/chen-xihui/agent-runtime-operator/internal/sandbox"
 )
 
 // AgentReconciler 调谐 Agent 资源，创建关联的 Sandbox，

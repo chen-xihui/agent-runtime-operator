@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/agent-runtime-operator/internal/eventbus"
+	"github.com/chen-xihui/agent-runtime-operator/internal/eventbus"
 	"github.com/nats-io/nats.go"
 )
 

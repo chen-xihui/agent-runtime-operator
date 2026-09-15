@@ -10,8 +10,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/eventbus"
+	"github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/eventbus"
 )
 
 // Graph 由 DSL 解析得到的可执行 DAG

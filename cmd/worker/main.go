@@ -11,8 +11,8 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 
-	"github.com/example/agent-runtime-operator/internal/eventbus"
-	"github.com/example/agent-runtime-operator/internal/orchestrator"
+	"github.com/chen-xihui/agent-runtime-operator/internal/eventbus"
+	"github.com/chen-xihui/agent-runtime-operator/internal/orchestrator"
 )
 
 func main() {

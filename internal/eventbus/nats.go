@@ -8,7 +8,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/example/agent-runtime-operator/internal/telemetry"
+	"github.com/chen-xihui/agent-runtime-operator/internal/telemetry"
 )
 
 // NatsConfig NATS 连接配置

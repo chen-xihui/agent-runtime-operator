@@ -15,7 +15,7 @@ import (
 	"sync"
 	"testing"
 
-	agentv1 "github.com/example/agent-runtime-operator/api/v1"
+	agentv1 "github.com/chen-xihui/agent-runtime-operator/api/v1"
 )
 
 // firecrackerState 记录 mock 内部状态机（模拟真实 Firecracker：NotStarted → Running → Paused）

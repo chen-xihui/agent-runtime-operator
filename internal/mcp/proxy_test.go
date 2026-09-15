@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/example/agent-runtime-operator/internal/audit"
+	"github.com/chen-xihui/agent-runtime-operator/internal/audit"
 )
 
 func TestMemoryProxy_InvokeFlow(t *testing.T) {

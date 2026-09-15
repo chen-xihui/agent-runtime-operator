@@ -11,9 +11,9 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/example/agent-runtime-operator/api/v1"
-	"github.com/example/agent-runtime-operator/internal/audit"
-	"github.com/example/agent-runtime-operator/sdk"
+	"github.com/chen-xihui/agent-runtime-operator/api/v1"
+	"github.com/chen-xihui/agent-runtime-operator/internal/audit"
+	"github.com/chen-xihui/agent-runtime-operator/sdk"
 )
 
 // Server REST API 服务器
