@@ -136,3 +136,54 @@ func TestParseNodeEvent(t *testing.T) {
 		t.Fatal("should not parse without runID")
 	}
 }
+
+// TestNodeEventProcessor_SeenEventsBounded 幂等缓存有界（FIFO 淘汰，防内存泄漏）
+func TestNodeEventProcessor_SeenEventsBounded(t *testing.T) {
+	p := newEventProcessor()
+	p.seenCap = 3
+
+	// 写入 3 条，未超上限
+	for _, id := range []string{"e1", "e2", "e3"} {
+		if !p.markSeen(id) {
+			t.Fatalf("%s should be first-seen", id)
+		}
+	}
+	if len(p.seenEvents) != 3 {
+		t.Fatalf("seenEvents = %d, want 3", len(p.seenEvents))
+	}
+
+	// 写入第 4 条 → 最旧的 e1 被淘汰，缓存仍为 3
+	if !p.markSeen("e4") {
+		t.Fatal("e4 should be first-seen")
+	}
+	if len(p.seenEvents) != 3 {
+		t.Fatalf("seenEvents = %d, want 3 (bounded)", len(p.seenEvents))
+	}
+	if _, ok := p.seenEvents["e1"]; ok {
+		t.Fatal("oldest e1 should be evicted")
+	}
+	// e4 已记录，重复应被识别
+	if p.markSeen("e4") {
+		t.Fatal("e4 should be deduplicated")
+	}
+}
+
+// TestNodeEventProcessor_Dedup 幂等：同一事件 ID 只处理一次
+func TestNodeEventProcessor_Dedup(t *testing.T) {
+	r := testRun("wr-d", "run-d")
+	p := newEventProcessor(r)
+	ctx := context.Background()
+
+	if err := p.OnEvent(ctx, nodeEvent("dup-1", "run-d", "analyze", eventbus.EventNodeSucceeded)); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	if err := p.OnEvent(ctx, nodeEvent("dup-1", "run-d", "analyze", eventbus.EventNodeSucceeded)); err != nil {
+		t.Fatalf("dup: %v", err)
+	}
+
+	got := &agentv1.WorkflowRun{}
+	_ = p.Get(ctx, types.NamespacedName{Name: "wr-d", Namespace: "tenant-a"}, got)
+	if got.Status.EventsCount != 1 {
+		t.Fatalf("eventsCount = %d, want 1 (dedup)", got.Status.EventsCount)
+	}
+}

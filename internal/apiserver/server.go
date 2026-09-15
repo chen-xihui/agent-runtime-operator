@@ -4,7 +4,9 @@ package apiserver
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,6 +34,9 @@ func (s *Server) WithAuditStore(st audit.Store) *Server {
 	}
 	return s
 }
+
+// maxRequestBodyBytes 请求体大小上限（1MiB）：防止超大 body 耗尽内存
+const maxRequestBodyBytes = 1 << 20
 
 // Handler 返回 HTTP 处理器（Go 1.22 method+path 路由）
 func (s *Server) Handler() http.Handler {
@@ -68,7 +73,17 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	return withRecovery(mux)
+	return withRecovery(withBodyLimit(mux))
+}
+
+// withBodyLimit 限制请求体大小（1MiB），防止超大 body 导致内存耗尽。
+func withBodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // ===================== Tenant =====================
@@ -320,11 +335,14 @@ func writeError(w http.ResponseWriter, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
-// withRecovery panic 恢复中间件
+// withRecovery panic 恢复中间件：捕获 panic，记录堆栈并返回 500。
 func withRecovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
+				// 记录 panic 详情与堆栈，便于排查（不返回给客户端，避免信息泄露）
+				log.Printf("apiserver: panic recovered: %v\nmethod=%s path=%s\n%s",
+					rec, r.Method, r.URL.Path, debug.Stack())
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			}
 		}()

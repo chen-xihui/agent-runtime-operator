@@ -52,3 +52,39 @@ func TestNoopStore(t *testing.T) {
 		t.Fatalf("noop query: %v", err)
 	}
 }
+
+// TestMemoryStore_CapacityEviction 容量上限：超过后淘汰最旧记录（防止无界增长）
+func TestMemoryStore_CapacityEviction(t *testing.T) {
+	s := NewMemoryStoreWithCapacity(3)
+	ctx := context.Background()
+
+	base := time.Now()
+	for i := 0; i < 5; i++ {
+		_ = s.Write(ctx, &Record{
+			ID:        string(rune('a' + i)),
+			TenantID:  "tenant-a",
+			Timestamp: base.Add(time.Duration(i) * time.Second),
+		})
+	}
+
+	records, err := s.Query(ctx, Filter{TenantID: "tenant-a"})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	// 只保留最新 3 条：c/d/e（a、b 被淘汰）
+	if len(records) != 3 {
+		t.Fatalf("records = %d, want 3 (capacity)", len(records))
+	}
+	got := map[string]bool{}
+	for _, r := range records {
+		got[r.ID] = true
+	}
+	if got["a"] || got["b"] {
+		t.Fatalf("oldest records not evicted: %v", got)
+	}
+	for _, want := range []string{"c", "d", "e"} {
+		if !got[want] {
+			t.Fatalf("expected %s retained, got %v", want, got)
+		}
+	}
+}

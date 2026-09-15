@@ -6,6 +6,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"time"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -53,8 +54,18 @@ func main() {
 		log.Printf("agent-runtime api-server audit store enabled (nats=%s)", natsURL)
 	}
 
+	// 显式超时配置：防止慢连接/慢请求耗尽连接（未设超时的默认值是 0=无限等待）
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           server.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
 	log.Printf("agent-runtime api-server listening on %s", addr)
-	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }

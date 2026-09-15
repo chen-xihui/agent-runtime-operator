@@ -11,16 +11,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// 幂等去重缓存默认容量（事件 ID 上限，FIFO 淘汰，避免无界增长导致内存泄漏）
+const defaultSeenEventsCap = 10000
+
 // NodeEventProcessor 处理编排节点结果事件，幂等推进 WorkflowRun 状态（P1-3）。
 // 设计（design-doc 4.2.4）：
 //   - 事件总线 at-least-once 投递，故需幂等去重（幂等键：eventID）
 //   - 更新 status.nodeResults / currentNode / eventsCount
 //   - 全部节点到终态后判定 run 最终状态（SUCCEEDED / FAILED，含 Always 补偿）
+//
+// 说明：待处理事件在本进程内串行化（processMu），避免同一 WorkflowRun 的
+// 读-改-写竞态导致状态丢失；跨副本幂等需外部存储（CRD status / 缓存）。
 type NodeEventProcessor struct {
 	client.Client
-	// 幂等去重：已处理的事件 ID（内存态；生产可用缓存/状态存储）
-	mu          sync.Mutex
-	seenEvents  map[string]struct{}
+	// 幂等去重：已处理的事件 ID（内存态，FIFO 上限见 seenCap）
+	mu         sync.Mutex
+	seenEvents map[string]struct{}
+	seenOrder  []string // FIFO 淘汰顺序
+	seenCap    int
+	// processMu 串行化事件处理，避免同一 run 的并发读-改-写竞态
+	processMu sync.Mutex
 	// ConditionEvaluator 用于 always/条件推进（预留，R-2）
 	Condition orchestrator.ConditionEvaluator
 }
@@ -30,10 +40,13 @@ func NewNodeEventProcessor(c client.Client) *NodeEventProcessor {
 	return &NodeEventProcessor{
 		Client:     c,
 		seenEvents: make(map[string]struct{}),
+		seenCap:    defaultSeenEventsCap,
 	}
 }
 
-// OnEvent 处理单个编排事件（幂等推进 WorkflowRun 状态）
+// OnEvent 处理单个编排事件（幂等推进 WorkflowRun 状态）。
+// 处理过程在进程内串行化：事件处理器并发调用时会读取-修改-回写同一个
+// WorkflowRun status，若不串行化会相互覆盖（乐观冲突/状态丢失）。
 func (p *NodeEventProcessor) OnEvent(ctx context.Context, evt *eventbus.CloudEvent) error {
 	if evt == nil {
 		return nil
@@ -43,6 +56,10 @@ func (p *NodeEventProcessor) OnEvent(ctx context.Context, evt *eventbus.CloudEve
 	if !p.markSeen(evt.ID) {
 		return nil // 已处理过，跳过
 	}
+
+	// 串行化同一进程内的事件处理（防读-改-写竞态）
+	p.processMu.Lock()
+	defer p.processMu.Unlock()
 
 	// 从 Data 解析 runID 与节点（NATS subject 不允许 '/'，经 CloudEvent.Data 传递）
 	runID, nodeID, ok := parseNodeEvent(evt)
@@ -76,7 +93,10 @@ func (p *NodeEventProcessor) OnEvent(ctx context.Context, evt *eventbus.CloudEve
 	return nil
 }
 
-// markSeen 幂等去重：返回 true 表示首次处理
+// markSeen 幂等去重：返回 true 表示首次处理。
+// 采用固定容量 + FIFO 淘汰，避免事件 ID 无界累积导致内存泄漏；
+// 淘汰最旧记录意味着极长时间后重复的历史事件可能被再次处理，
+// 但幂等终态由 setFinalPhase（不覆盖终态）与状态比对兜底。
 func (p *NodeEventProcessor) markSeen(eventID string) bool {
 	if eventID == "" {
 		return true // 无事件 ID，不幂等（退回默认）
@@ -87,6 +107,13 @@ func (p *NodeEventProcessor) markSeen(eventID string) bool {
 		return false
 	}
 	p.seenEvents[eventID] = struct{}{}
+	p.seenOrder = append(p.seenOrder, eventID)
+	// FIFO 淘汰：超出容量时移除最旧记录
+	if cap := p.seenCap; cap > 0 && len(p.seenOrder) > cap {
+		oldest := p.seenOrder[0]
+		p.seenOrder = p.seenOrder[1:]
+		delete(p.seenEvents, oldest)
+	}
 	return true
 }
 

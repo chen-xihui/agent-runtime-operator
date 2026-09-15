@@ -58,15 +58,33 @@ type Store interface {
 	Query(ctx context.Context, f Filter) ([]*Record, error)
 }
 
-// MemoryStore 基于内存的审计存储（进程内；生产可替换为事件流/数据库）
+// 内存审计存储默认容量上限（超出淘汰最旧记录，避免无界增长）
+const defaultMemoryStoreCap = 10000
+
+// MemoryStore 基于内存的审计存储。
+//
+// ⚠️ 仅适用于开发/测试/单实例场景：记录仅存于进程内，重启即丢失，
+// 且多副本之间不共享。生产环境请使用 NatsStore（JetStream 持久化，
+// internal/audit/nats_store.go）或外置数据库。
+//
+// 存储为有界环形语义：超过 capacity 时淘汰最旧记录。
 type MemoryStore struct {
-	mu      sync.RWMutex
-	records []*Record
+	mu       sync.RWMutex
+	records  []*Record
+	capacity int
 }
 
-// NewMemoryStore 创建内存审计存储
+// NewMemoryStore 创建内存审计存储（默认容量 defaultMemoryStoreCap）
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{}
+	return &MemoryStore{capacity: defaultMemoryStoreCap}
+}
+
+// NewMemoryStoreWithCapacity 创建指定容量的内存审计存储（便于测试与容量评估）
+func NewMemoryStoreWithCapacity(capacity int) *MemoryStore {
+	if capacity <= 0 {
+		capacity = defaultMemoryStoreCap
+	}
+	return &MemoryStore{capacity: capacity}
 }
 
 // Write 写入审计记录
@@ -80,6 +98,13 @@ func (s *MemoryStore) Write(ctx context.Context, r *Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = append(s.records, r)
+	// 容量淘汰：超过上限时丢弃最旧记录（保持有界内存）
+	if cap := s.capacity; cap > 0 && len(s.records) > cap {
+		// 复制到新切片，避免底层数组无限增长（否则 append 会持续扩容）
+		trimmed := make([]*Record, cap)
+		copy(trimmed, s.records[len(s.records)-cap:])
+		s.records = trimmed
+	}
 	return nil
 }
 

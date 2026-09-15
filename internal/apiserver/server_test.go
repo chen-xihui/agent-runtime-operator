@@ -61,6 +61,27 @@ func doReq(t *testing.T, method, url, body string) (*http.Response, map[string]i
 	return resp, out
 }
 
+// TestServer_RejectsOversizedBody 超大请求体应被拒绝（1MiB 上限，防内存耗尽）
+func TestServer_RejectsOversizedBody(t *testing.T) {
+	ts := testServer(t)
+
+	// 构造 >1MiB 的 body（合法 JSON 结构，仅体积超限）
+	big := `{"metadata":{"name":"` + strings.Repeat("a", maxRequestBodyBytes+1024) + `"}}`
+	resp, out := doReq(t, "POST", ts.URL+"/api/v1/tenants", big)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("oversized body status = %d, want 400 (out=%v)", resp.StatusCode, out)
+	}
+}
+
+// TestServer_AcceptsNormalBody 正常大小 body 不受影响
+func TestServer_AcceptsNormalBody(t *testing.T) {
+	ts := testServer(t)
+	resp, out := doReq(t, "POST", ts.URL+"/api/v1/tenants", `{"metadata":{"name":"tenant-ok"}}`)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("normal body status = %d, want 201 (out=%v)", resp.StatusCode, out)
+	}
+}
+
 func TestServer_Health(t *testing.T) {
 	ts := testServer(t)
 	resp, out := doReq(t, "GET", ts.URL+"/healthz", "")
