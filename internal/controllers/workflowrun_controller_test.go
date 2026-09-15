@@ -32,10 +32,12 @@ type fakeEngine struct {
 	cancelled string
 	runID    string
 	err      error
+	gotInput map[string]interface{} // 记录 Execute 收到的 workflow input
 }
 
 func (f *fakeEngine) Execute(data *orchestrator.ExecutionData, input map[string]interface{}) (string, string, error) {
 	f.executed = true
+	f.gotInput = input
 	if f.err != nil {
 		return "", "", f.err
 	}
@@ -108,6 +110,62 @@ func TestWorkflowRun_StartSuccess(t *testing.T) {
 	}
 	if got.Status.RunID != "run-abc" {
 		t.Fatalf("runID = %q, want run-abc", got.Status.RunID)
+	}
+}
+
+// TestWorkflowRun_InjectsTenantID operator 必须自动注入 tenantId（= namespace）。
+// 事件总线强制要求 tenantId，缺失会导致节点事件发布失败、编排卡死。
+func TestWorkflowRun_InjectsTenantID(t *testing.T) {
+	engine := &fakeEngine{runID: "run-t"}
+	r := newReconciler(engine, validWorkflow())
+
+	run := &agentv1.WorkflowRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "wr-tenant", Namespace: "tenant-a"},
+		Spec: agentv1.WorkflowRunSpec{
+			WorkflowRef: "wf-1",
+			Input:       map[string]interface{}{"goal": "x"},
+		},
+	}
+	if err := r.Create(context.Background(), run); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "wr-tenant", Namespace: "tenant-a"},
+	}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	if got := engine.gotInput["tenantId"]; got != "tenant-a" {
+		t.Fatalf("tenantId = %v, want tenant-a (namespace)", got)
+	}
+	if engine.gotInput["goal"] != "x" {
+		t.Fatalf("user input lost: %v", engine.gotInput)
+	}
+}
+
+// TestWorkflowRun_TenantIDNotOverridable 用户无法通过 spec.input 伪造 tenantId（跨租户防护）
+func TestWorkflowRun_TenantIDNotOverridable(t *testing.T) {
+	engine := &fakeEngine{runID: "run-t2"}
+	r := newReconciler(engine, validWorkflow())
+
+	run := &agentv1.WorkflowRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "wr-spoof", Namespace: "tenant-a"},
+		Spec: agentv1.WorkflowRunSpec{
+			WorkflowRef: "wf-1",
+			Input:       map[string]interface{}{"tenantId": "tenant-victim"},
+		},
+	}
+	if err := r.Create(context.Background(), run); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "wr-spoof", Namespace: "tenant-a"},
+	}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	if got := engine.gotInput["tenantId"]; got != "tenant-a" {
+		t.Fatalf("tenantId = %v, want tenant-a (namespace must win over user input)", got)
 	}
 }
 

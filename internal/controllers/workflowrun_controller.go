@@ -91,7 +91,17 @@ func (r *WorkflowRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		r.updateStatus(ctx, run, agentv1.PhaseRunFailed, "", "", err.Error())
 		return ctrl.Result{}, nil
 	}
-	runID, workflowID, err := r.Engine.Execute(data, run.Spec.Input)
+	// 注入租户上下文：tenantId 取自 WorkflowRun 的 namespace（平台语义，非用户输入）。
+	// 事件总线（eventbus.Publish）强制要求 tenantId，且节点事件按租户隔离；
+	// 若依赖用户在 spec.input 手填会导致事件发布失败、编排卡死。
+	// 安全：namespace 始终覆盖 spec.input 中的同名键，用户无法伪造跨租户身份。
+	execInput := make(map[string]interface{}, len(run.Spec.Input)+1)
+	for k, v := range run.Spec.Input {
+		execInput[k] = v
+	}
+	execInput["tenantId"] = run.Namespace
+
+	runID, workflowID, err := r.Engine.Execute(data, execInput)
 	if err != nil {
 		r.updateStatus(ctx, run, agentv1.PhaseRunFailed, "", "", fmt.Sprintf("execute workflow: %v", err))
 		return ctrl.Result{}, nil
