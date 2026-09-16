@@ -634,4 +634,28 @@ NATS 事件总线 subject 级 ACL（R-3）✅
 - 进程式 operator 已在 :8080/metrics 暴露 agent_* 指标（验证环境）
 
 
+事件持久化 + 回放闭环端到端验证（真机）✅
+环境（VM 192.168.0.31，docker）
+- NATS 2.10 with JetStream：`docker run -d --name nats-agent -p 4222:4222 -p 8222:8222 -v /tmp/nats-js:/data nats:2.10 -js -sd /data -m 8222`
+- PostgreSQL 13 + Temporal auto-setup（注意：不可设 DYNAMIC_CONFIG_FILE_PATH=development-sql.yaml，该文件在镜像内不存在会导致 crash loop）
+- 新版 operator/worker 二进制（含 --enable-jetstream）经交叉编译（linux/amd64）后 scp 到 /root
+过程与结论
+- 启动确认：operator 日志 `event-driven orchestration enabled {"jetstream": true}`、`workflowrun controller enabled`；
+  worker 日志 `starting orchestration worker (... jetstream=true)`
+- `agent-events` stream 由 eventbus 代码自动幂等创建（无需人工建流）
+- 创建 WorkflowRun（tenant-m4/js-run-verify，workflowRef=m3-pipeline）→ phase=SUCCEEDED，
+  status 含 runId / workflowId / eventsCount=3 / nodeResults
+- JetStream messages=4；`replay-events --tenant=tenant-m4 --json` 回放出全部 4 条 NODE_* 事件
+  （analyze/review 各 STARTED+SUCCEEDED，tenantId=tenant-m4 正确）
+- 过滤验证：`--tenant=tenant-other` 回放 0 条（跨租户不可见，subject 前缀隔离生效）；`--limit=2` 正确截断
+缺陷发现与修复（本次验证的核心产出）
+- 现象：WorkflowRun 卡死，Activity 重试耗尽，日志
+  `EventSink: type=NODE_STARTED err=eventbus: tenantId required`
+- 根因：internal/controllers/workflowrun_controller.go 将 run.Spec.Input 原样传给 Temporal workflow，
+  未注入 tenantId；而 workflow 的 getTenant 依赖 input["tenantId"]，eventbus.Publish 又强制要求非空
+- 修复：operator 启动 workflow 前以 WorkflowRun.namespace 作为 tenantId 注入 exec input，
+  且 namespace 始终覆盖 spec.input 同名键（防止用户伪造跨租户身份）；拷贝后注入，不修改原 spec.input
+- 测试：TestWorkflowRun_InjectsTenantID / TestWorkflowRun_TenantIDNotOverridable
+
+
 

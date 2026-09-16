@@ -610,6 +610,12 @@ scp /tmp/replay-events root@<NODE>:/
 - operator/worker 须共享同一 stream 名，否则订阅方与发布方数据流不同，事件无法被消费推进
 - Helm（`charts/agent-infra`）：`operator.enableJetStream` / `worker.enableJetStream`（默认 `true`）+ `jetStreamStream` 对齐
 
+**实测结论（真机端到端，已通过）**：
+- 创建 WorkflowRun → `phase=SUCCEEDED`，JetStream `messages=4`，`replay-events --tenant=<t> --json` 回放全部 NODE_* 事件
+- 跨租户隔离：`--tenant=<other>` 回放 0 条；`--limit=N` 正确截断
+- 前置依赖：WorkflowRun 的租户由 operator 以 **namespace 自动注入**（无需在 `spec.input` 手填 `tenantId`）
+- 详见 `docs/record.md`「事件持久化 + 回放闭环端到端验证」
+
 ### 4.12 可观测性 / Grafana（M5，config/prometheus + config/grafana）
 
 > operator 经 controller-runtime 暴露 `/metrics`（`internal/metrics` 注册的 Prometheus 指标）。
